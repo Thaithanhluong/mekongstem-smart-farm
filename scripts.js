@@ -85,7 +85,6 @@
       lightOff: 85,
       soilDry: 50,
       pumpDuration: 5,
-      pumpPower: 100,
       fanOn: 30,
       fanOff: 25,
     },
@@ -173,13 +172,11 @@
       'lightOffThreshold',
       'soilDryThreshold',
       'pumpDurationSeconds',
-      'pumpPowerSlider',
       'fanOnThreshold',
       'fanOffThreshold',
       'lightOnThresholdValue',
       'lightOffThresholdValue',
       'soilDryThresholdValue',
-      'pumpPowerValue',
       'fanOnThresholdValue',
       'fanOffThresholdValue',
       'cameraStream',
@@ -219,7 +216,6 @@
     setInputValue('lightOffThreshold', state.thresholds.lightOff);
     setInputValue('soilDryThreshold', state.thresholds.soilDry);
     setInputValue('pumpDurationSeconds', state.thresholds.pumpDuration);
-    setInputValue('pumpPowerSlider', state.thresholds.pumpPower);
     setInputValue('fanOnThreshold', state.thresholds.fanOn);
     setInputValue('fanOffThreshold', state.thresholds.fanOff);
 
@@ -261,7 +257,6 @@
     bindThreshold('lightOffThreshold', 'lightOff');
     bindThreshold('soilDryThreshold', 'soilDry');
     bindThreshold('pumpDurationSeconds', 'pumpDuration');
-    bindThreshold('pumpPowerSlider', 'pumpPower');
     bindThreshold('fanOnThreshold', 'fanOn');
     bindThreshold('fanOffThreshold', 'fanOff');
 
@@ -537,10 +532,7 @@
       const title = getDeviceActionTitle(device, next);
       const sourceLabel = getDeviceSourceLabel(options.source);
       const timeText = formatTime(new Date());
-      const pumpPowerText = device === 'pump' && next
-        ? ` Công suất ${state.thresholds.pumpPower}%.`
-        : '';
-      addAlert(title, `Lúc ${timeText} qua ${sourceLabel}.${pumpPowerText}`, 'info', meta.icon);
+      addAlert(title, `Lúc ${timeText} qua ${sourceLabel}.`, 'info', meta.icon);
     }
   }
 
@@ -791,7 +783,6 @@
     setText('lightOnThresholdValue', `${state.thresholds.lightOn}%`);
     setText('lightOffThresholdValue', `${state.thresholds.lightOff}%`);
     setText('soilDryThresholdValue', `${state.thresholds.soilDry}%`);
-    setText('pumpPowerValue', `${state.thresholds.pumpPower}%`);
     setText('fanOnThresholdValue', `${state.thresholds.fanOn}°C`);
     setText('fanOffThresholdValue', `${state.thresholds.fanOff}°C`);
   }
@@ -1185,7 +1176,6 @@
     const next = Number.isFinite(number) ? number : fallback;
 
     if (key === 'pumpDuration') return Math.round(clamp(next, 1, 60));
-    if (key === 'pumpPower') return Math.round(clamp(next, 0, 100));
     if (key === 'fanOn') return Math.round(clamp(next, 15, 45));
     if (key === 'fanOff') return Math.round(clamp(next, 10, 40));
     return Math.round(clamp(next, 0, 100));
@@ -1212,7 +1202,6 @@
     setInputValue('lightOffThreshold', state.thresholds.lightOff);
     setInputValue('soilDryThreshold', state.thresholds.soilDry);
     setInputValue('pumpDurationSeconds', state.thresholds.pumpDuration);
-    setInputValue('pumpPowerSlider', state.thresholds.pumpPower);
     setInputValue('fanOnThreshold', state.thresholds.fanOn);
     setInputValue('fanOffThreshold', state.thresholds.fanOff);
     renderThresholdLabels();
