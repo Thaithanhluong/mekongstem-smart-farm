@@ -353,6 +353,13 @@ button {
   background: var(--farm-green-dark);
 }
 
+.icon-button:disabled,
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
 .sensor-split {
   display: grid;
   grid-template-columns: minmax(230px, 0.35fr) minmax(0, 0.65fr);
@@ -680,6 +687,32 @@ button {
   display: none;
 }
 
+.camera-view.is-loading::after,
+.camera-view.is-error::after {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 2;
+  max-width: calc(100% - 32px);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.76);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.camera-view.is-loading::after {
+  content: "Đang làm mới camera...";
+}
+
+.camera-view.is-error::after {
+  content: "Không đọc được camera, đang thử lại";
+}
+
 .camera-placeholder {
   position: absolute;
   inset: 0;
@@ -776,9 +809,19 @@ button {
   color: var(--farm-green-dark);
 }
 
+.camera-badge.is-loading {
+  background: #fff7ed;
+  color: var(--warning);
+}
+
+.camera-badge.is-error {
+  background: #fef2f2;
+  color: var(--danger);
+}
+
 .camera-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 38px;
+  grid-template-columns: minmax(0, 1fr) auto 38px 38px;
   gap: 8px;
 }
 

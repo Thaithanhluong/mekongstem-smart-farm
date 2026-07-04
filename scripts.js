@@ -123,6 +123,7 @@
   const SMART_FARM_PONG = 'HERE';
   const SMART_FARM_HEARTBEAT_MS = 5000;
   const SMART_FARM_TIMEOUT_MS = 15000;
+  const CAMERA_RETRY_DELAY_MS = 5000;
 
   let state = loadState();
   let elements = {};
@@ -136,6 +137,9 @@
   let autoPumpTimer = null;
   let autoPumpStarted = false;
   let lastPumpCycleAt = 0;
+  let cameraRetryTimer = null;
+  let cameraRefreshToken = Date.now();
+  let appliedCameraUrl = '';
 
   document.addEventListener('DOMContentLoaded', init);
 
@@ -203,6 +207,7 @@
       'cameraTimestamp',
       'cameraUrlInput',
       'saveCameraUrlButton',
+      'refreshCameraButton',
       'clearCameraUrlButton',
       'mqttUrlInput',
       'mqttUsernameInput',
@@ -281,8 +286,12 @@
     elements.saveCameraUrlButton?.addEventListener('click', () => {
       state.cameraUrl = String(elements.cameraUrlInput?.value || '').trim();
       saveState();
-      renderCamera();
+      renderCamera({ forceReload: true });
       addAlert('Camera', state.cameraUrl ? 'Đã cập nhật luồng camera từ xa.' : 'Đang dùng khung mô phỏng camera.', 'info', 'fa-video');
+    });
+
+    elements.refreshCameraButton?.addEventListener('click', () => {
+      refreshCameraStream({ notify: true });
     });
 
     elements.clearCameraUrlButton?.addEventListener('click', () => {
@@ -292,8 +301,18 @@
       renderCamera();
     });
 
+    elements.cameraStream?.addEventListener('load', () => {
+      clearCameraRetry();
+      elements.cameraView?.classList.remove('is-loading', 'is-error');
+      setCameraStatus('live');
+    });
+
     elements.cameraStream?.addEventListener('error', () => {
+      elements.cameraView?.classList.remove('is-loading');
+      elements.cameraView?.classList.add('is-error');
+      setCameraStatus('error');
       addAlertThrottled('camera-error', 'Camera', 'Không đọc được luồng camera đã nhập.', 'warning', 'fa-triangle-exclamation', 90_000);
+      scheduleCameraRetry();
     });
 
     elements.saveMqttConfigButton?.addEventListener('click', () => {
@@ -905,19 +924,101 @@
     setText('fanOffThresholdValue', `${state.thresholds.fanOff}°C`);
   }
 
-  function renderCamera() {
+  function renderCamera(options = {}) {
     const url = String(state.cameraUrl || '').trim();
-    if (elements.cameraStream) {
-      if (url && elements.cameraStream.src !== url) {
-        elements.cameraStream.src = url;
-      } else if (!url) {
-        elements.cameraStream.removeAttribute('src');
-      }
+    const hasUrl = Boolean(url);
+
+    elements.cameraView?.classList.toggle('has-stream', hasUrl);
+    if (elements.refreshCameraButton) elements.refreshCameraButton.disabled = !hasUrl;
+
+    if (!hasUrl) {
+      clearCameraRetry();
+      appliedCameraUrl = '';
+      elements.cameraStream?.removeAttribute('src');
+      elements.cameraView?.classList.remove('is-loading', 'is-error');
+      setCameraStatus('mock');
+      return;
     }
 
-    elements.cameraView?.classList.toggle('has-stream', Boolean(url));
-    elements.cameraStatus?.classList.toggle('is-live', Boolean(url));
-    setText('cameraStatus', url ? 'Đang phát' : 'Mô phỏng');
+    if (options.forceReload || appliedCameraUrl !== url || !elements.cameraStream?.getAttribute('src')) {
+      refreshCameraStream();
+      return;
+    }
+
+    if (!elements.cameraView?.classList.contains('is-error') && !elements.cameraView?.classList.contains('is-loading')) {
+      setCameraStatus('live');
+    }
+  }
+
+  function refreshCameraStream(options = {}) {
+    const url = String(state.cameraUrl || '').trim();
+    if (!url) {
+      renderCamera();
+      return;
+    }
+
+    clearCameraRetry();
+    appliedCameraUrl = url;
+    cameraRefreshToken = Date.now();
+    elements.cameraView?.classList.add('has-stream', 'is-loading');
+    elements.cameraView?.classList.remove('is-error');
+    setCameraStatus('loading');
+
+    if (elements.cameraStream) {
+      const nextSrc = buildCameraStreamUrl(url, cameraRefreshToken);
+      elements.cameraStream.removeAttribute('src');
+      window.setTimeout(() => {
+        if (String(state.cameraUrl || '').trim() === url) {
+          elements.cameraStream.src = nextSrc;
+        }
+      }, 80);
+    }
+
+    if (options.notify) {
+      addAlert('Camera', 'Đã làm mới luồng camera.', 'info', 'fa-rotate');
+    }
+  }
+
+  function scheduleCameraRetry() {
+    if (!state.cameraUrl || cameraRetryTimer) return;
+    cameraRetryTimer = window.setTimeout(() => {
+      cameraRetryTimer = null;
+      refreshCameraStream();
+    }, CAMERA_RETRY_DELAY_MS);
+  }
+
+  function clearCameraRetry() {
+    if (!cameraRetryTimer) return;
+    window.clearTimeout(cameraRetryTimer);
+    cameraRetryTimer = null;
+  }
+
+  function setCameraStatus(status) {
+    if (!elements.cameraStatus) return;
+
+    elements.cameraStatus.classList.toggle('is-live', status === 'live' || status === 'loading');
+    elements.cameraStatus.classList.toggle('is-error', status === 'error');
+    elements.cameraStatus.classList.toggle('is-loading', status === 'loading');
+
+    const labels = {
+      mock: 'Mô phỏng',
+      loading: 'Đang tải',
+      live: 'Đang phát',
+      error: 'Lỗi camera',
+    };
+
+    setText('cameraStatus', labels[status] || labels.mock);
+  }
+
+  function buildCameraStreamUrl(url, token) {
+    try {
+      const streamUrl = new URL(url, window.location.href);
+      streamUrl.searchParams.set('_refresh', token);
+      return streamUrl.toString();
+    } catch (error) {
+      const separator = url.includes('?') ? '&' : '?';
+      return `${url}${separator}_refresh=${encodeURIComponent(token)}`;
+    }
   }
 
   function renderAlertDateControls() {
