@@ -99,7 +99,7 @@
       fanOn: 30,
       fanOff: 25,
     },
-    cameraUrl: '',
+    cameraUrl: 'http://192.168.1.4:81/stream',
     history: [],
     alerts: [],
     alertsByDate: {},
