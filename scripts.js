@@ -16,6 +16,16 @@
     presence: 'V10',
   };
 
+  const RULE_PARAMETER_CHANNELS = {
+    // V11 matches the Scratch receiver; V12 keeps compatibility with esp32_scratch_mqtt.py.
+    lightOn: ['V11', 'V12'],
+    lightOff: ['V13'],
+    soilDry: ['V14'],
+    pumpDuration: ['V15'],
+    fanOn: ['V16'],
+    fanOff: ['V17'],
+  };
+
   const SENSOR_BY_CHANNEL = {
     V1: 'temperature',
     V2: 'humidity',
@@ -333,6 +343,7 @@
       state.thresholds[key] = normalizeThreshold(key, input.value);
       syncThresholdBounds(state.thresholds);
       renderThresholdLabels();
+      publishRuleParameters();
     });
 
     input.addEventListener('change', () => {
@@ -340,6 +351,7 @@
       syncThresholdBounds(state.thresholds);
       hydrateThresholdInputs();
       saveState();
+      publishRuleParameters();
       renderSensorCards();
       runFrontendAutomation('threshold');
     });
@@ -378,6 +390,7 @@
       setMqttStatus('MQTT OK - kiểm tra Smart Farm', 'warning');
       subscribeMqttTopics();
       flushPendingMessages();
+      publishRuleParameters();
     });
 
     mqttClient.on('reconnect', () => {
@@ -495,6 +508,13 @@
     messages.forEach((item) => publishChannel(item.channel, item.message));
   }
 
+  function publishRuleParameters() {
+    Object.entries(RULE_PARAMETER_CHANNELS).forEach(([key, channels]) => {
+      const value = normalizeThreshold(key, state.thresholds[key]);
+      channels.forEach((channel) => publishChannel(channel, value));
+    });
+  }
+
   function startSmartFarmHeartbeat() {
     stopSmartFarmHeartbeat();
     sendSmartFarmHeartbeat();
@@ -551,6 +571,7 @@
 
     if (!wasConnected) {
       addAlertThrottled('smart-farm-online', 'Smart Farm', 'ESP32/Scratch đã phản hồi HERE qua V10.', 'info', 'fa-wifi', 30_000);
+      publishRuleParameters();
     }
   }
 
