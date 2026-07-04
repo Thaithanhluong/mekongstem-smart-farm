@@ -123,6 +123,7 @@
   const SMART_FARM_PONG = 'HERE';
   const SMART_FARM_HEARTBEAT_MS = 5000;
   const SMART_FARM_TIMEOUT_MS = 15000;
+  const MQTT_HEALTH_CHECK_MS = 3000;
   const CAMERA_RETRY_DELAY_MS = 5000;
 
   let state = loadState();
@@ -153,6 +154,7 @@
 
     window.setInterval(updateClock, 1000);
     window.setInterval(() => runFrontendAutomation('timer'), 4000);
+    window.setInterval(checkMqttConnectionHealth, MQTT_HEALTH_CHECK_MS);
     window.addEventListener('resize', drawEnvironmentChart);
   }
 
@@ -481,11 +483,13 @@
     }
 
     if (SENSOR_BY_CHANNEL[channel]) {
+      markSmartFarmOnline();
       updateSensor(SENSOR_BY_CHANNEL[channel], parseNumericValue(message), { source: 'mqtt' });
       return;
     }
 
     if (DEVICE_BY_CHANNEL[channel]) {
+      markSmartFarmOnline();
       const stateValue = parseBinary(message);
       if (stateValue !== null) {
         setDevice(DEVICE_BY_CHANNEL[channel], stateValue, { source: 'mqtt', publish: false });
@@ -494,6 +498,7 @@
     }
 
     if (channel === CHANNELS.mode) {
+      markSmartFarmOnline();
       const iotMode = parseBinary(message);
       if (iotMode !== null) {
         state.controls.iotMode = iotMode;
@@ -555,6 +560,38 @@
     }
 
     publishPresenceMessage(SMART_FARM_PING);
+  }
+
+  function checkMqttConnectionHealth() {
+    const clientIsConnected = Boolean(mqttClient?.connected);
+    const clientIsReconnecting = Boolean(mqttClient?.reconnecting);
+
+    if (!mqttClient) {
+      mqttConnected = false;
+      smartFarmConnected = false;
+      setMqttStatus('MQTT ngắt kết nối', 'error');
+      connectMqtt();
+      return;
+    }
+
+    if (!clientIsConnected) {
+      mqttConnected = false;
+      smartFarmConnected = false;
+      stopSmartFarmHeartbeat();
+      setMqttStatus(clientIsReconnecting ? 'Đang kết nối lại' : 'MQTT ngắt kết nối', clientIsReconnecting ? 'connecting' : 'error');
+      return;
+    }
+
+    if (!mqttConnected) {
+      mqttConnected = true;
+      subscribeMqttTopics();
+    }
+
+    checkSmartFarmTimeout();
+
+    if (!smartFarmConnected) {
+      setMqttStatus(smartFarmLastSeenAt ? 'Mất kết nối Smart Farm' : 'MQTT OK - chờ Smart Farm', 'warning');
+    }
   }
 
   function publishPresenceMessage(payload) {
