@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mekong Stem Smart Farm Dashboard</title>
+  <link rel="icon" href="favicon.ico" type="image/x-icon" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+  <link href="styles.css" rel="stylesheet" />
+  <script defer src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script defer src="scripts.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <img src="logo.png" alt="MEKONG STEM" class="brand__logo" />
+      <div class="brand__text">
+        <p>MEKONG STEM</p>
+        <h1>SMART FARM</h1>
+      </div>
+    </div>
+
+    <div class="header-status">
+      <div class="status-chip status-chip--mqtt" aria-live="polite">
+        <i class="fa-solid fa-wifi"></i>
+        <span id="mqttConnectionStatus">Đang khởi tạo</span>
+      </div>
+      <div class="status-chip">
+        <i class="fa-regular fa-clock"></i>
+        <span id="clockValue">--:--:--</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="dashboard-shell">
+    <section class="metric-grid" aria-label="Thông số môi trường">
+      <article class="metric-card" data-metric="temperature">
+        <div class="metric-card__icon"><i class="fa-solid fa-temperature-three-quarters"></i></div>
+        <div class="metric-card__body">
+          <p>Nhiệt độ</p>
+          <h2 id="temperatureValue">--<span>°C</span></h2>
+          <div class="metric-card__bar"><span id="temperatureGauge"></span></div>
+          <strong id="temperatureStatus">Chưa có dữ liệu</strong>
+        </div>
+      </article>
+
+      <article class="metric-card" data-metric="humidity">
+        <div class="metric-card__icon"><i class="fa-solid fa-droplet"></i></div>
+        <div class="metric-card__body">
+          <p>Độ ẩm không khí</p>
+          <h2 id="humidityValue">--<span>%</span></h2>
+          <div class="metric-card__bar"><span id="humidityGauge"></span></div>
+          <strong id="humidityStatus">Chưa có dữ liệu</strong>
+        </div>
+      </article>
+
+      <article class="metric-card" data-metric="light">
+        <div class="metric-card__icon"><i class="fa-solid fa-sun"></i></div>
+        <div class="metric-card__body">
+          <p>Ánh sáng</p>
+          <h2 id="lightValue">--<span>%</span></h2>
+          <div class="metric-card__bar"><span id="lightGauge"></span></div>
+          <strong id="lightStatus">Chưa có dữ liệu</strong>
+        </div>
+      </article>
+
+      <article class="metric-card" data-metric="soil">
+        <div class="metric-card__icon"><i class="fa-solid fa-seedling"></i></div>
+        <div class="metric-card__body">
+          <p>Độ ẩm đất</p>
+          <h2 id="soilAverageValue">--<span>%</span></h2>
+          <div class="metric-card__bar"><span id="soilGauge"></span></div>
+          <strong id="soilStatus">Chưa có dữ liệu</strong>
+        </div>
+      </article>
+    </section>
+
+    <section class="dashboard-grid">
+      <section class="panel panel--wide environment-panel">
+        <div class="panel__header">
+          <div>
+            <p class="panel__eyebrow">GIÁM SÁT CÂY TRỒNG</p>
+            <h2>Môi trường nhà vườn</h2>
+          </div>
+          <button class="icon-button" id="simulateDataButton" type="button" title="Tạo dữ liệu demo" aria-label="Tạo dữ liệu demo">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+          </button>
+        </div>
+
+        <div class="sensor-split">
+          <div class="sensor-list">
+            <div class="sensor-row">
+              <span><i class="fa-solid fa-leaf"></i> Trạng thái cây</span>
+              <strong id="cropConditionValue">Đang chờ dữ liệu</strong>
+            </div>
+            <div class="sensor-row">
+              <span><i class="fa-solid fa-mound"></i> Đất khu A</span>
+              <strong id="soilOneValue">--%</strong>
+            </div>
+            <div class="sensor-row">
+              <span><i class="fa-solid fa-mound"></i> Đất khu B</span>
+              <strong id="soilTwoValue">--%</strong>
+            </div>
+            <div class="sensor-row">
+              <span><i class="fa-solid fa-tower-broadcast"></i> Cập nhật</span>
+              <strong id="lastUpdatedValue">--</strong>
+            </div>
+          </div>
+
+          <div class="chart-panel" aria-label="Biểu đồ môi trường">
+            <div class="chart-panel__legend">
+              <span><i style="background:#dc2626"></i>Nhiệt độ</span>
+              <span><i style="background:#2563eb"></i>Không khí</span>
+              <span><i style="background:#f59e0b"></i>Ánh sáng</span>
+              <span><i style="background:#16a34a"></i>Đất</span>
+            </div>
+            <canvas id="environmentChart" height="210"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel controls-panel">
+        <div class="panel__header">
+          <div>
+            <p class="panel__eyebrow">IOT</p>
+            <h2>Điều khiển thiết bị</h2>
+          </div>
+        </div>
+
+        <div class="mode-switch" role="group" aria-label="Chế độ vận hành">
+          <button id="modeEspAuto" type="button" data-mode="esp-auto">ESP tự động</button>
+          <button id="modeIotManual" type="button" data-mode="iot-manual">IoT thủ công</button>
+        </div>
+
+        <div class="device-list">
+          <div class="device-row" data-device="light">
+            <div class="device-row__icon"><i class="fa-solid fa-lightbulb"></i></div>
+            <div>
+              <h3>Đèn trồng cây</h3>
+              <p id="lightControlStatus">Tắt</p>
+            </div>
+            <label class="switch">
+              <input id="lightToggle" type="checkbox" />
+              <span></span>
+            </label>
+          </div>
+
+          <div class="device-row" data-device="pump">
+            <div class="device-row__icon"><i class="fa-solid fa-faucet-drip"></i></div>
+            <div>
+              <h3>Bơm tưới nước</h3>
+              <p id="pumpControlStatus">Tắt</p>
+            </div>
+            <label class="switch">
+              <input id="pumpToggle" type="checkbox" />
+              <span></span>
+            </label>
+          </div>
+
+          <div class="device-row" data-device="fan">
+            <div class="device-row__icon"><i class="fa-solid fa-fan"></i></div>
+            <div>
+              <h3>Quạt điều hòa</h3>
+              <p id="fanControlStatus">Tắt</p>
+            </div>
+            <label class="switch">
+              <input id="fanToggle" type="checkbox" />
+              <span></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel automation-panel">
+        <div class="panel__header">
+          <div>
+            <p class="panel__eyebrow">TỰ ĐỘNG HÓA</p>
+            <h2>Luật vận hành trên web</h2>
+          </div>
+        </div>
+
+        <div class="automation-list">
+          <label class="automation-toggle">
+            <span><i class="fa-solid fa-sun"></i> Bật đèn khi thiếu sáng</span>
+            <input id="autoLightToggle" type="checkbox" />
+          </label>
+          <div class="range-row">
+            <label for="lightOnThreshold">Bật dưới <strong id="lightOnThresholdValue">50%</strong></label>
+            <input id="lightOnThreshold" type="range" min="0" max="100" step="5" />
+          </div>
+          <div class="range-row">
+            <label for="lightOffThreshold">Tắt trên <strong id="lightOffThresholdValue">85%</strong></label>
+            <input id="lightOffThreshold" type="range" min="0" max="100" step="5" />
+          </div>
+
+          <label class="automation-toggle">
+            <span><i class="fa-solid fa-faucet-drip"></i> Tưới khi đất khô</span>
+            <input id="autoPumpToggle" type="checkbox" />
+          </label>
+          <div class="range-row">
+            <label for="soilDryThreshold">Đất dưới <strong id="soilDryThresholdValue">50%</strong></label>
+            <input id="soilDryThreshold" type="range" min="0" max="100" step="5" />
+          </div>
+          <label class="compact-input">
+            <span>Thời gian tưới</span>
+            <input id="pumpDurationSeconds" type="number" min="1" max="60" step="1" />
+            <em>giây</em>
+          </label>
+          <div class="range-row">
+            <label for="pumpPowerSlider">Công suất bơm <strong id="pumpPowerValue">100%</strong></label>
+            <input id="pumpPowerSlider" type="range" min="0" max="100" step="5" />
+          </div>
+
+          <label class="automation-toggle">
+            <span><i class="fa-solid fa-fan"></i> Bật quạt điều hòa</span>
+            <input id="autoFanToggle" type="checkbox" />
+          </label>
+          <div class="range-row">
+            <label for="fanOnThreshold">Bật từ <strong id="fanOnThresholdValue">30°C</strong></label>
+            <input id="fanOnThreshold" type="range" min="15" max="45" step="1" />
+          </div>
+          <div class="range-row">
+            <label for="fanOffThreshold">Tắt dưới <strong id="fanOffThresholdValue">25°C</strong></label>
+            <input id="fanOffThreshold" type="range" min="10" max="40" step="1" />
+          </div>
+        </div>
+      </section>
+
+      <section class="panel camera-panel">
+        <div class="panel__header">
+          <div>
+            <p class="panel__eyebrow">CAMERA</p>
+            <h2>Giám sát từ xa</h2>
+          </div>
+          <span class="camera-badge" id="cameraStatus">Mô phỏng</span>
+        </div>
+
+        <div class="camera-view">
+          <img id="cameraStream" alt="Luồng camera nhà vườn" />
+          <div id="cameraPlaceholder" class="camera-placeholder" aria-hidden="true">
+            <div class="camera-sky"></div>
+            <div class="camera-bed camera-bed--one"></div>
+            <div class="camera-bed camera-bed--two"></div>
+            <div class="camera-scan"></div>
+          </div>
+          <div class="camera-overlay">
+            <span><i class="fa-solid fa-circle"></i> LIVE</span>
+            <span id="cameraTimestamp">--:--:--</span>
+          </div>
+        </div>
+
+        <div class="camera-controls">
+          <input id="cameraUrlInput" type="url" placeholder="http://camera-ip/stream" aria-label="URL camera" />
+          <button id="saveCameraUrlButton" type="button" class="primary-button">
+            <i class="fa-solid fa-check"></i>
+            <span>Áp dụng</span>
+          </button>
+          <button id="clearCameraUrlButton" type="button" class="icon-button" title="Dùng mô phỏng" aria-label="Dùng mô phỏng">
+            <i class="fa-solid fa-rotate-left"></i>
+          </button>
+        </div>
+      </section>
+
+      <section class="panel iot-panel">
+        <div class="panel__header">
+          <div>
+            <p class="panel__eyebrow">MQTT</p>
+            <h2>Kết nối OhStem</h2>
+          </div>
+          <button id="reconnectMqttButton" type="button" class="icon-button" title="Kết nối lại MQTT" aria-label="Kết nối lại MQTT">
+            <i class="fa-solid fa-plug-circle-bolt"></i>
+          </button>
+        </div>
+
+        <div class="mqtt-form">
+          <label>
+            <span>WebSocket</span>
+            <input id="mqttUrlInput" type="text" autocomplete="off" />
+          </label>
+          <label>
+            <span>Username</span>
+            <input id="mqttUsernameInput" type="text" autocomplete="off" />
+          </label>
+          <label>
+            <span>Password</span>
+            <input id="mqttPasswordInput" type="password" autocomplete="off" />
+          </label>
+          <label>
+            <span>Topic gốc</span>
+            <input id="mqttBaseTopicInput" type="text" autocomplete="off" />
+          </label>
+          <button id="saveMqttConfigButton" type="button" class="primary-button">
+            <i class="fa-solid fa-floppy-disk"></i>
+            <span>Lưu kết nối</span>
+          </button>
+        </div>
+
+        <div class="topic-map">
+          <span>V1 Nhiệt độ</span>
+          <span>V2 Ẩm KK</span>
+          <span>V3 Đất A</span>
+          <span>V4 Đất B</span>
+          <span>V5 Ánh sáng</span>
+          <span>V6 Đèn</span>
+          <span>V7 Bơm</span>
+          <span>V8 Quạt</span>
+          <span>V9 Chế độ</span>
+        </div>
+      </section>
+
+      <section class="panel alerts-panel">
+        <div class="panel__header">
+          <div>
+            <p class="panel__eyebrow">NHẬT KÝ</p>
+            <h2>Cảnh báo & sự kiện</h2>
+          </div>
+          <button id="clearAlertsButton" type="button" class="icon-button" title="Xóa nhật ký" aria-label="Xóa nhật ký">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+        <div class="alert-date-controls" aria-label="Chọn ngày nhật ký">
+          <button id="alertPrevDayButton" type="button" class="icon-button" title="Ngày trước" aria-label="Ngày trước">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+          <input id="alertDateInput" type="date" aria-label="Ngày nhật ký" />
+          <button id="alertTodayButton" type="button" class="primary-button">
+            <i class="fa-regular fa-calendar-check"></i>
+            <span>Hôm nay</span>
+          </button>
+          <button id="alertNextDayButton" type="button" class="icon-button" title="Ngày sau" aria-label="Ngày sau">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+        <div id="alertsList" class="alerts-list" aria-live="polite"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <span>MEKONG STEM - MEKONG CẤT CÁNH, STEM DẪN ĐƯỜNG</span>
+    <span id="mqttDetail">MQTT: --</span>
+  </footer>
+</body>
+</html>
