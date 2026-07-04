@@ -121,8 +121,25 @@ button {
   color: var(--farm-green-dark);
 }
 
+.status-chip--mqtt.is-online i {
+  color: var(--farm-green);
+}
+
+.status-chip--mqtt.is-warning {
+  border-color: rgba(180, 83, 9, 0.36);
+  color: var(--warning);
+}
+
+.status-chip--mqtt.is-warning i {
+  color: var(--warning);
+}
+
 .status-chip--mqtt.is-error {
   border-color: rgba(220, 38, 38, 0.32);
+  color: var(--danger);
+}
+
+.status-chip--mqtt.is-error i {
   color: var(--danger);
 }
 

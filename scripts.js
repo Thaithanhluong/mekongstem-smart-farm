@@ -13,6 +13,7 @@
     pump: 'V7',
     fan: 'V8',
     mode: 'V9',
+    presence: 'V10',
   };
 
   const SENSOR_BY_CHANNEL = {
@@ -108,11 +109,18 @@
   const ALERT_LIMIT = 36;
   const PUMP_COOLDOWN_MS = 60_000;
   const SENSOR_ALERT_COOLDOWN_MS = 75_000;
+  const SMART_FARM_PING = 'ARE U HERE';
+  const SMART_FARM_PONG = 'HERE';
+  const SMART_FARM_HEARTBEAT_MS = 5000;
+  const SMART_FARM_TIMEOUT_MS = 15000;
 
   let state = loadState();
   let elements = {};
   let mqttClient = null;
   let mqttConnected = false;
+  let smartFarmConnected = false;
+  let smartFarmLastSeenAt = 0;
+  let smartFarmHeartbeatTimer = null;
   let pendingMessages = [];
   let alertThrottle = new Map();
   let autoPumpTimer = null;
@@ -365,18 +373,24 @@
 
     mqttClient.on('connect', () => {
       mqttConnected = true;
-      setMqttStatus('Đã kết nối MQTT', 'online');
+      smartFarmConnected = false;
+      smartFarmLastSeenAt = 0;
+      setMqttStatus('MQTT OK - kiểm tra Smart Farm', 'warning');
       subscribeMqttTopics();
       flushPendingMessages();
     });
 
     mqttClient.on('reconnect', () => {
       mqttConnected = false;
+      smartFarmConnected = false;
+      stopSmartFarmHeartbeat();
       setMqttStatus('Đang kết nối lại', 'connecting');
     });
 
     mqttClient.on('close', () => {
       mqttConnected = false;
+      smartFarmConnected = false;
+      stopSmartFarmHeartbeat();
       if (mqttClient) {
         setMqttStatus('MQTT ngắt kết nối', 'error');
       }
@@ -395,6 +409,8 @@
       const client = mqttClient;
       mqttClient = null;
       mqttConnected = false;
+      smartFarmConnected = false;
+      stopSmartFarmHeartbeat();
       client.end(true);
     }
 
@@ -417,6 +433,8 @@
       }
 
       updateMqttDetail();
+      setMqttStatus('MQTT OK - chờ Smart Farm', 'warning');
+      startSmartFarmHeartbeat();
       addAlertThrottled('mqtt-online', 'MQTT', 'Đã sẵn sàng nhận dữ liệu Smart Farm.', 'info', 'fa-wifi', 30_000);
     });
   }
@@ -424,6 +442,11 @@
   function handleMqttMessage(topic, payload) {
     const message = payload.toString().trim();
     const channel = extractChannel(topic);
+
+    if (channel === CHANNELS.presence) {
+      handleSmartFarmPresence(message);
+      return;
+    }
 
     if (SENSOR_BY_CHANNEL[channel]) {
       updateSensor(SENSOR_BY_CHANNEL[channel], parseNumericValue(message), { source: 'mqtt' });
@@ -472,6 +495,78 @@
     messages.forEach((item) => publishChannel(item.channel, item.message));
   }
 
+  function startSmartFarmHeartbeat() {
+    stopSmartFarmHeartbeat();
+    sendSmartFarmHeartbeat();
+    smartFarmHeartbeatTimer = window.setInterval(sendSmartFarmHeartbeat, SMART_FARM_HEARTBEAT_MS);
+  }
+
+  function stopSmartFarmHeartbeat() {
+    if (!smartFarmHeartbeatTimer) return;
+    window.clearInterval(smartFarmHeartbeatTimer);
+    smartFarmHeartbeatTimer = null;
+  }
+
+  function sendSmartFarmHeartbeat() {
+    if (!mqttClient || !mqttConnected) return;
+
+    checkSmartFarmTimeout();
+    if (!smartFarmConnected) {
+      setMqttStatus(smartFarmLastSeenAt ? 'Mất kết nối Smart Farm' : 'MQTT OK - chờ Smart Farm', 'warning');
+    }
+
+    publishPresenceMessage(SMART_FARM_PING);
+  }
+
+  function publishPresenceMessage(payload) {
+    if (!mqttClient || !mqttConnected) return;
+
+    Array.from(new Set(topicCandidates(CHANNELS.presence))).forEach((topic) => {
+      mqttClient.publish(topic, payload, { qos: 0, retain: false }, (error) => {
+        if (error) {
+          addAlertThrottled('smart-farm-ping-error', 'Smart Farm', `Không gửi được V10: ${error.message}`, 'warning', 'fa-triangle-exclamation', 60_000);
+        }
+      });
+    });
+  }
+
+  function handleSmartFarmPresence(message) {
+    const normalized = String(message || '').trim().toUpperCase();
+
+    if (normalized === SMART_FARM_PONG) {
+      markSmartFarmOnline();
+      return;
+    }
+
+    if (normalized === SMART_FARM_PING) {
+      return;
+    }
+  }
+
+  function markSmartFarmOnline() {
+    const wasConnected = smartFarmConnected;
+    smartFarmConnected = true;
+    smartFarmLastSeenAt = Date.now();
+    setMqttStatus('Đã kết nối Smart Farm', 'online');
+
+    if (!wasConnected) {
+      addAlertThrottled('smart-farm-online', 'Smart Farm', 'ESP32/Scratch đã phản hồi HERE qua V10.', 'info', 'fa-wifi', 30_000);
+    }
+  }
+
+  function checkSmartFarmTimeout() {
+    if (!mqttConnected || !smartFarmLastSeenAt) return;
+
+    if (Date.now() - smartFarmLastSeenAt <= SMART_FARM_TIMEOUT_MS) return;
+
+    if (smartFarmConnected) {
+      addAlertThrottled('smart-farm-offline', 'Smart Farm', 'Không nhận phản hồi HERE từ V10.', 'warning', 'fa-plug-circle-xmark', 60_000);
+    }
+
+    smartFarmConnected = false;
+    setMqttStatus('Mất kết nối Smart Farm', 'warning');
+  }
+
   function setMqttStatus(label, tone) {
     if (elements.mqttConnectionStatus) {
       elements.mqttConnectionStatus.textContent = label;
@@ -479,6 +574,7 @@
 
     if (elements.mqttStatusChip) {
       elements.mqttStatusChip.classList.toggle('is-online', tone === 'online');
+      elements.mqttStatusChip.classList.toggle('is-warning', tone === 'warning');
       elements.mqttStatusChip.classList.toggle('is-error', tone === 'error');
     }
 
@@ -487,9 +583,10 @@
 
   function updateMqttDetail(label = '') {
     if (!elements.mqttDetail) return;
-    const base = normalizeBaseTopic(state.config.baseTopic) || '(raw V1-V9)';
+    const base = normalizeBaseTopic(state.config.baseTopic) || '(raw V1-V10)';
     const prefix = label ? `${label} - ` : '';
-    elements.mqttDetail.textContent = `${prefix}${state.config.username || 'anonymous'} @ ${base}`;
+    const farmSeen = smartFarmLastSeenAt ? ` - HERE lúc ${formatTime(smartFarmLastSeenAt)}` : '';
+    elements.mqttDetail.textContent = `${prefix}${state.config.username || 'anonymous'} @ ${base}${farmSeen}`;
   }
 
   function setIotMode(isIotMode, options = {}) {
