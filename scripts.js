@@ -132,6 +132,7 @@
   const SMART_FARM_PING = 'ARE U HERE';
   const SMART_FARM_PONG = 'HERE';
   const SMART_FARM_SYNC_REQUEST = 'SYNC_REQUEST';
+  const SMART_FARM_SYNC_GUARD_MS = 2500;
   const SMART_FARM_HEARTBEAT_MS = 5000;
   const SMART_FARM_TIMEOUT_MS = 15000;
   const MQTT_HEALTH_CHECK_MS = 3000;
@@ -144,6 +145,7 @@
   let mqttConnected = false;
   let smartFarmConnected = false;
   let smartFarmLastSeenAt = 0;
+  let smartFarmSyncRequestedAt = 0;
   let smartFarmHeartbeatTimer = null;
   let pendingMessages = [];
   let alertThrottle = new Map();
@@ -516,7 +518,9 @@
       updateMqttDetail();
       setMqttStatus('MQTT OK - chờ Smart Farm', 'warning');
       startSmartFarmHeartbeat();
-      sendSmartFarmSyncRequest();
+      if (Date.now() - smartFarmSyncRequestedAt > SMART_FARM_SYNC_GUARD_MS) {
+        sendSmartFarmSyncRequest();
+      }
       addAlertThrottled('mqtt-online', 'MQTT', 'Đã sẵn sàng nhận dữ liệu Smart Farm.', 'info', 'fa-wifi', 30_000);
     });
   }
@@ -604,6 +608,7 @@
   }
 
   function sendSmartFarmSyncRequest() {
+    smartFarmSyncRequestedAt = Date.now();
     publishPresenceMessage(SMART_FARM_SYNC_REQUEST);
   }
 
@@ -695,7 +700,9 @@
 
     if (!wasConnected) {
       addAlertThrottled('smart-farm-online', 'Smart Farm', 'ESP32/Scratch đã phản hồi HERE qua V10.', 'info', 'fa-wifi', 30_000);
-      sendSmartFarmSyncRequest();
+      if (Date.now() - smartFarmSyncRequestedAt > SMART_FARM_SYNC_GUARD_MS) {
+        sendSmartFarmSyncRequest();
+      }
     }
   }
 
