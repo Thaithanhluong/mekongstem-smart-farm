@@ -18,14 +18,12 @@ async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m_kk():
   lcd1602.show(str((''.join([str(x2) for x2 in ['H:', Do_am_kk, '%']]))), 1 - 1, 11 - 1)
 
 async def on_mqtt_msg_V7(topic, msg):
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   if msg == '1':
     if manual_mode:
       relay.set_relay(1, 1)
-      bom_IoT = True
   else:
     relay.set_relay(1, 0)
-    bom_IoT = False
 
 # Mô tả hàm này...
 async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C3_A1nh_s_C3_A1ng():
@@ -33,14 +31,12 @@ async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C3_A1nh_s_C3_A1ng():
   lcd1602.show(str(('LUX:' + str(Do_sang))), 2 - 1, 1 - 1)
 
 async def on_mqtt_msg_V8(topic, msg):
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   if msg == '1':
     if manual_mode:
       relay.set_relay(2, 1)
-      quat_IoT = True
   else:
     relay.set_relay(2, 0)
-    quat_IoT = False
 
 # Mô tả hàm này...
 async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A5t_1():
@@ -48,11 +44,11 @@ async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A
   lcd1602.show(str(('Do am 1:' + str(Do_am_dat_1))), 1 - 1, 1 - 1)
 
 async def on_mqtt_msg_V10(topic, msg):
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   check_connect = msg
   if msg == 'ARE U HERE':
     await mqtt_client.publish('V10', 'HERE')
-  if msg == 'SYNC_REQUEST':
+  elif msg == 'SYNC_REQUEST':
     await publish_current_state()
 
 # Mô tả hàm này...
@@ -61,46 +57,44 @@ async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A
   lcd1602.show(str(('Do am 2:' + str(Do_am_dat_2))), 2 - 1, 1 - 1)
 
 async def on_mqtt_msg_V9(topic, msg):
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   if msg == '1':
     manual_mode = True
   else:
     manual_mode = False
 
 async def on_mqtt_msg_V12(topic, msg):
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   nguong_Bat_Den = int((msg))
 
 async def on_mqtt_msg_V13(topic, msg):
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   nguong_Tat_Den = int((msg))
 
 async def on_mqtt_msg_V6(topic, msg):
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   if msg == '1':
     if manual_mode:
       relay.set_relay(3, 1)
-      den_IoT = True
       neopix.show(0, hex_to_rgb('#ffa500'))
   else:
     relay.set_relay(3, 0)
-    den_IoT = False
     neopix.show(0, hex_to_rgb('#0000ff'))
 
 async def on_mqtt_msg_V14(topic, msg):
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   nguong_Do_Am = int((msg))
 
 async def on_mqtt_msg_V15(topic, msg):
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   thoi_gian_tuoi_nuoc = int((msg))
 
 async def on_mqtt_msg_V16(topic, msg):
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   nguong_Bat_Quat = int((msg))
 
 async def on_mqtt_msg_V17(topic, msg):
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   nguong_Tat_Quat = int((msg))
 
 # Mô tả hàm này...
@@ -120,44 +114,24 @@ async def Hi_E1_BB_83n_th_E1_BB_8B_ban__C4_91_E1_BA_A7u():
   await LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A5t_1()
   await LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A5t_2()
 
-async def update_sensor_values():
-  global Nhiet_do, Do_am_kk, Do_sang, Do_am_dat_1, Do_am_dat_2
-  Nhiet_do = await dht20.atemperature()
-  Do_am_kk = await dht20.ahumidity()
-  Do_sang = light_A2.read_analog_percent()
-  Do_am_dat_1 = 100 - (soil_A0.read_analog_percent())
-  Do_am_dat_2 = 100 - (soil_A1.read_analog_percent())
-
-def bool_payload(value):
-  if value:
-    return '1'
-  return '0'
-
+# Mô tả hàm này...
 async def publish_current_state():
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, thoi_gian_tuoi_nuoc, nguong_Bat_Quat, nguong_Tat_Quat, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
-  await mqtt_client.publish('V10', 'HERE')
-  await update_sensor_values()
-  snapshot = [
-    ('V1', Nhiet_do),
-    ('V2', Do_am_kk),
-    ('V5', Do_sang),
-    ('V3', Do_am_dat_1),
-    ('V4', Do_am_dat_2),
-    ('V6', bool_payload(den_IoT)),
-    ('V7', bool_payload(bom_IoT)),
-    ('V8', bool_payload(quat_IoT)),
-    ('V9', bool_payload(manual_mode)),
-    ('V12', nguong_Bat_Den),
-    ('V13', nguong_Tat_Den),
-    ('V14', nguong_Do_Am),
-    ('V15', thoi_gian_tuoi_nuoc),
-    ('V16', nguong_Bat_Quat),
-    ('V17', nguong_Tat_Quat),
-  ]
-  for item in snapshot:
-    if item[1] != None:
-      await mqtt_client.publish(item[0], item[1])
-      await asleep_ms(120)
+  await mqtt_client.publish('V1', Nhiet_do)
+  await mqtt_client.publish('V2', Do_am_kk)
+  await mqtt_client.publish('V3', Do_am_dat_1)
+  await mqtt_client.publish('V4', Do_am_dat_2)
+  await mqtt_client.publish('V5', Do_sang)
+  await mqtt_client.publish('V6', den_IoT)
+  await mqtt_client.publish('V7', bom_IoT)
+  await mqtt_client.publish('V8', quat_IoT)
+  await mqtt_client.publish('V9', manual_mode)
+  await mqtt_client.publish('V12', nguong_Bat_Den)
+  await mqtt_client.publish('V13', nguong_Tat_Den)
+  await mqtt_client.publish('V14', nguong_Do_Am)
+  await mqtt_client.publish('V15', thoi_gian_tuoi_nuoc)
+  await mqtt_client.publish('V16', nguong_Bat_Quat)
+  await mqtt_client.publish('V17', nguong_Tat_Quat)
 
 Nhiet_do = None
 check_connect = None
@@ -175,6 +149,9 @@ Do_am_dat_1 = None
 Do_am_dat_2 = None
 den_IoT = None
 quat_IoT = None
+snapshot = None
+i = None
+list2 = None
 lcd1602 = LCD1602()
 cfg['ssid'] = 'BNG Tech'
 cfg['wifi_pw'] = 'bng@2025'
@@ -207,7 +184,7 @@ yolo_uno.deinit = deinit
 mqtt_client = MQTTClient(cfg); MQTTClient.DEBUG = True
 
 async def task_x_V_D_p():
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   while True:
     await asleep_ms(10000)
     Nhiet_do = await dht20.atemperature()
@@ -234,37 +211,31 @@ async def task_x_V_D_p():
     await mqtt_client.publish('V4', Do_am_dat_2)
 
 async def task_P_T_K_R():
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   while True:
     await asleep_ms(10000)
     if not manual_mode:
       if Nhiet_do >= nguong_Bat_Quat:
         relay.set_relay(2, 1)
-        quat_IoT = True
         await mqtt_client.publish('V8', '1')
       elif Nhiet_do <= nguong_Tat_Quat:
         relay.set_relay(2, 0)
-        quat_IoT = False
         await mqtt_client.publish('V8', '0')
       if Do_sang <= nguong_Bat_Den:
         relay.set_relay(3, 1)
-        den_IoT = True
         await mqtt_client.publish('V6', '1')
       elif Do_sang >= nguong_Tat_Den:
         relay.set_relay(3, 0)
-        den_IoT = False
         await mqtt_client.publish('V6', '0')
       if Do_am_dat_1 <= nguong_Do_Am or Do_am_dat_2 <= nguong_Do_Am:
         relay.set_relay(1, 1)
-        bom_IoT = True
         await mqtt_client.publish('V7', '1')
         await asleep_ms(int(thoi_gian_tuoi_nuoc*1000))
         relay.set_relay(1, 0)
-        bom_IoT = False
         await mqtt_client.publish('V7', '0')
 
 async def setup():
-  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
+  global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
   print('App started')
   lcd1602.clear()
   relay.set_relay(0, 0)
