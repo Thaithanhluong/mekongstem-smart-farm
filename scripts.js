@@ -209,6 +209,7 @@
       'cameraPlaceholder',
       'cameraStatus',
       'cameraTimestamp',
+      'cameraProtocolSelect',
       'cameraUrlInput',
       'saveCameraUrlButton',
       'refreshCameraButton',
@@ -252,7 +253,7 @@
     setChecked('lightToggle', state.controls.light);
     setChecked('pumpToggle', state.controls.pump);
     setChecked('fanToggle', state.controls.fan);
-    setInputValue('cameraUrlInput', state.cameraUrl);
+    syncCameraUrlInputs();
   }
 
   function bindEvents() {
@@ -288,7 +289,8 @@
     bindThreshold('fanOffThreshold', 'fanOff');
 
     elements.saveCameraUrlButton?.addEventListener('click', () => {
-      state.cameraUrl = String(elements.cameraUrlInput?.value || '').trim();
+      state.cameraUrl = buildCameraUrl(elements.cameraProtocolSelect?.value, elements.cameraUrlInput?.value);
+      syncCameraUrlInputs();
       saveState();
       renderCamera({ forceReload: true });
       addAlert('Camera', state.cameraUrl ? 'Đã cập nhật luồng camera từ xa.' : 'Đang dùng khung mô phỏng camera.', 'info', 'fa-video');
@@ -300,7 +302,7 @@
 
     elements.clearCameraUrlButton?.addEventListener('click', () => {
       state.cameraUrl = '';
-      setInputValue('cameraUrlInput', '');
+      syncCameraUrlInputs();
       saveState();
       renderCamera();
     });
@@ -344,6 +346,48 @@
     });
 
     elements.simulateDataButton?.addEventListener('click', simulateSensorData);
+  }
+
+  function syncCameraUrlInputs(url = state.cameraUrl) {
+    const parts = splitCameraUrl(url);
+    setInputValue('cameraProtocolSelect', parts.protocol);
+    setInputValue('cameraUrlInput', parts.address);
+  }
+
+  function buildCameraUrl(protocol, value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+
+    const pastedUrl = splitCameraUrl(raw);
+    if (pastedUrl.hasProtocol) {
+      return pastedUrl.address ? `${pastedUrl.protocol}${pastedUrl.address}` : '';
+    }
+
+    const address = raw.replace(/^\/+/, '');
+    return address ? `${normalizeCameraProtocol(protocol)}${address}` : '';
+  }
+
+  function splitCameraUrl(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(https?:\/\/)(.*)$/i);
+
+    if (match) {
+      return {
+        protocol: normalizeCameraProtocol(match[1]),
+        address: match[2].replace(/^\/+/, ''),
+        hasProtocol: true,
+      };
+    }
+
+    return {
+      protocol: 'http://',
+      address: raw.replace(/^\/+/, ''),
+      hasProtocol: false,
+    };
+  }
+
+  function normalizeCameraProtocol(protocol) {
+    return String(protocol || '').toLowerCase() === 'https://' ? 'https://' : 'http://';
   }
 
   function bindThreshold(inputId, key) {

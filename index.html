@@ -249,7 +249,13 @@
         </div>
 
         <div class="camera-controls">
-          <input id="cameraUrlInput" type="url" placeholder="http://camera-ip/stream" aria-label="URL camera" />
+          <div class="camera-url-field">
+            <select id="cameraProtocolSelect" aria-label="Giao thuc camera">
+              <option value="http://">http://</option>
+              <option value="https://">https://</option>
+            </select>
+            <input id="cameraUrlInput" type="text" inputmode="url" placeholder="192.168.1.12:81/stream" aria-label="IP camera" />
+          </div>
           <button id="saveCameraUrlButton" type="button" class="primary-button">
             <i class="fa-solid fa-check"></i>
             <span>Áp dụng</span>
