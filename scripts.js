@@ -26,6 +26,16 @@
     fanOff: ['V17'],
   };
 
+  const THRESHOLD_BY_CHANNEL = {
+    V11: 'lightOn',
+    V12: 'lightOn',
+    V13: 'lightOff',
+    V14: 'soilDry',
+    V15: 'pumpDuration',
+    V16: 'fanOn',
+    V17: 'fanOff',
+  };
+
   const SENSOR_BY_CHANNEL = {
     V1: 'temperature',
     V2: 'humidity',
@@ -121,6 +131,7 @@
   const SENSOR_ALERT_COOLDOWN_MS = 75_000;
   const SMART_FARM_PING = 'ARE U HERE';
   const SMART_FARM_PONG = 'HERE';
+  const SMART_FARM_SYNC_REQUEST = 'SYNC_REQUEST';
   const SMART_FARM_HEARTBEAT_MS = 5000;
   const SMART_FARM_TIMEOUT_MS = 15000;
   const MQTT_HEALTH_CHECK_MS = 3000;
@@ -445,7 +456,6 @@
       setMqttStatus('MQTT OK - kiểm tra Smart Farm', 'warning');
       subscribeMqttTopics();
       flushPendingMessages();
-      publishRuleParameters();
     });
 
     mqttClient.on('reconnect', () => {
@@ -492,6 +502,9 @@
     Object.values(CHANNELS).forEach((channel) => {
       topicCandidates(channel).forEach((topic) => topics.add(topic));
     });
+    Object.values(RULE_PARAMETER_CHANNELS).flat().forEach((channel) => {
+      topicCandidates(channel).forEach((topic) => topics.add(topic));
+    });
 
     mqttClient.subscribe(Array.from(topics), { qos: 0 }, (error) => {
       if (error) {
@@ -503,6 +516,7 @@
       updateMqttDetail();
       setMqttStatus('MQTT OK - chờ Smart Farm', 'warning');
       startSmartFarmHeartbeat();
+      sendSmartFarmSyncRequest();
       addAlertThrottled('mqtt-online', 'MQTT', 'Đã sẵn sàng nhận dữ liệu Smart Farm.', 'info', 'fa-wifi', 30_000);
     });
   }
@@ -539,6 +553,12 @@
         saveState();
         renderMode();
       }
+      return;
+    }
+
+    if (THRESHOLD_BY_CHANNEL[channel]) {
+      markSmartFarmOnline();
+      updateThresholdFromMqtt(THRESHOLD_BY_CHANNEL[channel], message);
     }
   }
 
@@ -571,6 +591,20 @@
       const value = normalizeThreshold(key, state.thresholds[key]);
       channels.forEach((channel) => publishChannel(channel, value));
     });
+  }
+
+  function updateThresholdFromMqtt(key, value) {
+    state.thresholds[key] = normalizeThreshold(key, value);
+    syncThresholdBounds(state.thresholds);
+    hydrateThresholdInputs();
+    saveState();
+    renderThresholdLabels();
+    renderSensorCards();
+    runFrontendAutomation('threshold');
+  }
+
+  function sendSmartFarmSyncRequest() {
+    publishPresenceMessage(SMART_FARM_SYNC_REQUEST);
   }
 
   function startSmartFarmHeartbeat() {
@@ -661,7 +695,7 @@
 
     if (!wasConnected) {
       addAlertThrottled('smart-farm-online', 'Smart Farm', 'ESP32/Scratch đã phản hồi HERE qua V10.', 'info', 'fa-wifi', 30_000);
-      publishRuleParameters();
+      sendSmartFarmSyncRequest();
     }
   }
 
