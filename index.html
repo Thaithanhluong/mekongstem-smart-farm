@@ -174,13 +174,16 @@
         </div>
       </section>
 
-      <section class="panel automation-panel">
-        <div class="panel__header">
+      <details class="panel automation-panel">
+        <summary class="panel__header automation-panel__summary">
           <div>
             <p class="panel__eyebrow">TỰ ĐỘNG HÓA</p>
             <h2>Luật vận hành trên web</h2>
           </div>
-        </div>
+          <svg class="automation-panel__chevron" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <path d="m6 15 6-6 6 6" />
+          </svg>
+        </summary>
 
         <div class="automation-list">
           <label class="automation-toggle">
@@ -223,7 +226,7 @@
             <input id="fanOffThreshold" type="range" min="10" max="40" step="1" />
           </div>
         </div>
-      </section>
+      </details>
 
       <section class="panel camera-panel">
         <div class="panel__header">

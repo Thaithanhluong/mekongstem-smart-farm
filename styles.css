@@ -593,6 +593,41 @@ button {
   outline-offset: 2px;
 }
 
+.automation-panel {
+  display: block;
+}
+
+.automation-panel__summary {
+  margin-bottom: 0;
+  list-style: none;
+  cursor: pointer;
+}
+
+.automation-panel__summary::-webkit-details-marker {
+  display: none;
+}
+
+.automation-panel__summary:focus-visible {
+  outline: 2px solid var(--farm-green);
+  outline-offset: 5px;
+  border-radius: 4px;
+}
+
+.automation-panel__chevron {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: var(--farm-green);
+}
+
+.automation-panel[open] .automation-panel__chevron {
+  transform: rotate(180deg);
+}
+
+.automation-panel[open] .automation-list {
+  margin-top: 16px;
+}
+
 .automation-list {
   display: grid;
   gap: 12px;
