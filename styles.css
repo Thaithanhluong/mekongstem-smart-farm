@@ -593,39 +593,55 @@ button {
   outline-offset: 2px;
 }
 
-.automation-panel {
+.collapsible-panel {
   display: block;
 }
 
-.automation-panel__summary {
+.panel__summary {
   margin-bottom: 0;
   list-style: none;
   cursor: pointer;
 }
 
-.automation-panel__summary::-webkit-details-marker {
+.panel__summary::-webkit-details-marker {
   display: none;
 }
 
-.automation-panel__summary:focus-visible {
+.panel__summary:focus-visible {
   outline: 2px solid var(--farm-green);
   outline-offset: 5px;
   border-radius: 4px;
 }
 
-.automation-panel__chevron {
+.panel__chevron {
   width: 24px;
   height: 24px;
   flex-shrink: 0;
   color: var(--farm-green);
 }
 
-.automation-panel[open] .automation-panel__chevron {
+.collapsible-panel[open] > .panel__summary .panel__chevron {
   transform: rotate(180deg);
 }
 
-.automation-panel[open] .automation-list {
+.panel__content {
+  display: grid;
+  gap: 14px;
   margin-top: 16px;
+}
+
+.panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sensors-panel {
+  margin-bottom: 18px;
+}
+
+.sensors-panel .metric-grid {
+  margin-bottom: 0;
 }
 
 .automation-list {
@@ -1051,7 +1067,7 @@ button {
 }
 
 @media (min-width: 1181px) {
-  .environment-panel {
+  .environment-panel[open] {
     grid-row: span 2;
   }
 }

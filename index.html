@@ -36,7 +36,13 @@
   </header>
 
   <main class="dashboard-shell">
-    <section class="metric-grid" aria-label="Thông số môi trường">
+    <details class="panel sensors-panel collapsible-panel">
+      <summary class="panel__header panel__summary">
+        <h2>Cảm biến</h2>
+        <svg class="panel__chevron" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 15 6-6 6 6" /></svg>
+      </summary>
+      <div class="panel__content">
+    <div class="metric-grid" aria-label="Thông số môi trường">
       <article class="metric-card" data-metric="temperature">
         <div class="metric-card__icon"><i class="fa-solid fa-temperature-three-quarters"></i></div>
         <div class="metric-card__body">
@@ -76,19 +82,25 @@
           <strong id="soilStatus">Chưa có dữ liệu</strong>
         </div>
       </article>
-    </section>
+    </div>
+      </div>
+    </details>
 
     <section class="dashboard-grid">
-      <section class="panel panel--wide environment-panel">
-        <div class="panel__header">
+      <details class="panel panel--wide environment-panel collapsible-panel">
+        <summary class="panel__header panel__summary">
           <div>
             <p class="panel__eyebrow">GIÁM SÁT CÂY TRỒNG</p>
             <h2>Môi trường nhà vườn</h2>
           </div>
-          <button class="icon-button" id="simulateDataButton" type="button" title="Tạo dữ liệu demo" aria-label="Tạo dữ liệu demo">
+          <div class="panel__header-actions">
+            <button class="icon-button" id="simulateDataButton" type="button" title="Tạo dữ liệu demo" aria-label="Tạo dữ liệu demo">
             <i class="fa-solid fa-wand-magic-sparkles"></i>
           </button>
-        </div>
+            <svg class="panel__chevron" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 15 6-6 6 6" /></svg>
+          </div>
+        </summary>
+        <div class="panel__content">
 
         <div class="sensor-split">
           <div class="sensor-list">
@@ -120,15 +132,18 @@
             <canvas id="environmentChart" height="210"></canvas>
           </div>
         </div>
-      </section>
+        </div>
+      </details>
 
-      <section class="panel controls-panel">
-        <div class="panel__header">
+      <details class="panel controls-panel collapsible-panel">
+        <summary class="panel__header panel__summary">
           <div>
             <p class="panel__eyebrow">IOT</p>
             <h2>Điều khiển thiết bị</h2>
           </div>
-        </div>
+          <svg class="panel__chevron" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 15 6-6 6 6" /></svg>
+        </summary>
+        <div class="panel__content">
 
         <div class="mode-switch" role="group" aria-label="Chế độ vận hành">
           <button id="modeEspAuto" type="button" data-mode="esp-auto">ESP tự động</button>
@@ -172,19 +187,21 @@
             </label>
           </div>
         </div>
-      </section>
+        </div>
+      </details>
 
-      <details class="panel automation-panel">
-        <summary class="panel__header automation-panel__summary">
+      <details class="panel automation-panel collapsible-panel">
+        <summary class="panel__header panel__summary">
           <div>
             <p class="panel__eyebrow">TỰ ĐỘNG HÓA</p>
             <h2>Luật vận hành trên web</h2>
           </div>
-          <svg class="automation-panel__chevron" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <svg class="panel__chevron" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
             <path d="m6 15 6-6 6 6" />
           </svg>
         </summary>
 
+        <div class="panel__content">
         <div class="automation-list">
           <label class="automation-toggle">
             <span><i class="fa-solid fa-sun"></i> Bật đèn khi thiếu sáng</span>
@@ -226,16 +243,21 @@
             <input id="fanOffThreshold" type="range" min="10" max="40" step="1" />
           </div>
         </div>
+        </div>
       </details>
 
-      <section class="panel camera-panel">
-        <div class="panel__header">
+      <details class="panel camera-panel collapsible-panel">
+        <summary class="panel__header panel__summary">
           <div>
             <p class="panel__eyebrow">CAMERA</p>
             <h2>Giám sát từ xa</h2>
           </div>
-          <span class="camera-badge" id="cameraStatus">Mô phỏng</span>
-        </div>
+          <div class="panel__header-actions">
+            <span class="camera-badge" id="cameraStatus">Mô phỏng</span>
+            <svg class="panel__chevron" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 15 6-6 6 6" /></svg>
+          </div>
+        </summary>
+        <div class="panel__content">
 
         <div class="camera-view">
           <img id="cameraStream" alt="Luồng camera nhà vườn" />
@@ -270,18 +292,23 @@
             <i class="fa-solid fa-rotate-left"></i>
           </button>
         </div>
-      </section>
+        </div>
+      </details>
 
-      <section class="panel iot-panel">
-        <div class="panel__header">
+      <details class="panel iot-panel collapsible-panel">
+        <summary class="panel__header panel__summary">
           <div>
             <p class="panel__eyebrow">MQTT</p>
             <h2>Kết nối</h2>
           </div>
-          <button id="reconnectMqttButton" type="button" class="icon-button" title="Kết nối lại MQTT" aria-label="Kết nối lại MQTT">
+          <div class="panel__header-actions">
+            <button id="reconnectMqttButton" type="button" class="icon-button" title="Kết nối lại MQTT" aria-label="Kết nối lại MQTT">
             <i class="fa-solid fa-plug-circle-bolt"></i>
           </button>
-        </div>
+            <svg class="panel__chevron" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 15 6-6 6 6" /></svg>
+          </div>
+        </summary>
+        <div class="panel__content">
 
         <div class="mqtt-form">
           <label>
@@ -323,18 +350,23 @@
           <span>V16 Ngưỡng bật quạt</span>
           <span>V17 Ngưỡng tắt quạt</span>
         </div>
-      </section>
+        </div>
+      </details>
 
-      <section class="panel alerts-panel">
-        <div class="panel__header">
+      <details class="panel alerts-panel collapsible-panel">
+        <summary class="panel__header panel__summary">
           <div>
             <p class="panel__eyebrow">NHẬT KÝ</p>
             <h2>Cảnh báo & sự kiện</h2>
           </div>
-          <button id="clearAlertsButton" type="button" class="icon-button" title="Xóa nhật ký" aria-label="Xóa nhật ký">
+          <div class="panel__header-actions">
+            <button id="clearAlertsButton" type="button" class="icon-button" title="Xóa nhật ký" aria-label="Xóa nhật ký">
             <i class="fa-solid fa-trash-can"></i>
           </button>
-        </div>
+            <svg class="panel__chevron" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 15 6-6 6 6" /></svg>
+          </div>
+        </summary>
+        <div class="panel__content">
         <div class="alert-date-controls" aria-label="Chọn ngày nhật ký">
           <button id="alertPrevDayButton" type="button" class="icon-button" title="Ngày trước" aria-label="Ngày trước">
             <i class="fa-solid fa-chevron-left"></i>
@@ -349,7 +381,8 @@
           </button>
         </div>
         <div id="alertsList" class="alerts-list" aria-live="polite"></div>
-      </section>
+        </div>
+      </details>
     </section>
   </main>
 

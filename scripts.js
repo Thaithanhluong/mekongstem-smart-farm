@@ -171,6 +171,9 @@
     window.setInterval(() => runFrontendAutomation('timer'), 4000);
     window.setInterval(checkMqttConnectionHealth, MQTT_HEALTH_CHECK_MS);
     window.addEventListener('resize', drawEnvironmentChart);
+    document.querySelector('.environment-panel')?.addEventListener('toggle', (event) => {
+      if (event.currentTarget.open) drawEnvironmentChart();
+    });
   }
 
   function bindElements() {
