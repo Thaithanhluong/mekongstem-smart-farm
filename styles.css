@@ -716,6 +716,11 @@ button {
 
 .camera-view {
   position: relative;
+  /* Keep the 16:9 preview below half the screen height on landscape LCDs. */
+  width: min(100%, 960px, 88vh);
+  width: min(100%, 960px, 88dvh);
+  min-width: 0;
+  margin-inline: auto;
   aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: 8px;
@@ -724,10 +729,12 @@ button {
 }
 
 .camera-view img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: none;
-  object-fit: cover;
+  object-fit: contain;
   background: #10251a;
 }
 
