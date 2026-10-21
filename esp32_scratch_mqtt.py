@@ -7,6 +7,10 @@ from pins import *
 
 cfg = config.copy()
 
+async def LCD_hien_thi_che_do():
+  che_do = 'Thu Cong' if manual_mode else 'Tu Dong '
+  lcd1602.show(che_do, 1, 8)
+
 # Mô tả hàm này...
 async def LCD_hi_E1_BB_83n_th_E1_BB_8B_nhi_E1_BB_87t__C4_91_E1_BB_99():
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, thoi_gian_tuoi_nuoc, nguong_Bat_Quat, nguong_Tat_Quat, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
@@ -30,7 +34,8 @@ async def on_mqtt_msg_V7(topic, msg):
 # Mô tả hàm này...
 async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C3_A1nh_s_C3_A1ng():
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, thoi_gian_tuoi_nuoc, nguong_Bat_Quat, nguong_Tat_Quat, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
-  lcd1602.show(str(('LUX:' + str(Do_sang))), 2 - 1, 1 - 1)
+  lcd1602.show(('LUX:' + str(Do_sang))[:8].ljust(8), 1, 0)
+  await LCD_hien_thi_che_do()
 
 async def on_mqtt_msg_V8(topic, msg):
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
@@ -58,7 +63,8 @@ async def on_mqtt_msg_V10(topic, msg):
 # Mô tả hàm này...
 async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A5t_2():
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, thoi_gian_tuoi_nuoc, nguong_Bat_Quat, nguong_Tat_Quat, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
-  lcd1602.show(str(('Do am 2:' + str(Do_am_dat_2))), 2 - 1, 1 - 1)
+  lcd1602.show(('Dat2:' + str(Do_am_dat_2))[:8].ljust(8), 1, 0)
+  await LCD_hien_thi_che_do()
 
 async def on_mqtt_msg_V9(topic, msg):
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
@@ -66,6 +72,7 @@ async def on_mqtt_msg_V9(topic, msg):
     manual_mode = True
   else:
     manual_mode = False
+  await LCD_hien_thi_che_do()
 
 async def on_mqtt_msg_V12(topic, msg):
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
@@ -180,8 +187,8 @@ snapshot = None
 i = None
 list2 = None
 lcd1602 = LCD1602()
-cfg['ssid'] = 'MinhHaiKhu2'
-cfg['wifi_pw'] = 'minhhaicm'
+cfg['ssid'] = 'MEKONG STEM 5G'
+cfg['wifi_pw'] = 'Mekong2025'
 cfg['server'] = 'mqtt.ohstem.vn'
 cfg['port'] = 1883
 cfg['user'] = 'greenhouse_BNG'
@@ -284,6 +291,7 @@ async def setup():
   thoi_gian_tuoi_nuoc = 5
   neopix.show(0, hex_to_rgb('#ff0000'))
   lcd1602.show(str('Wifi...'), 1 - 1, 1 - 1)
+  await LCD_hien_thi_che_do()
   await mqtt_client.connect()
   lcd1602.show(str('Wifi connected'), 1 - 1, 1 - 1)
   neopix.show(0, hex_to_rgb('#00ff00'))
