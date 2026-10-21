@@ -4,9 +4,172 @@ from mqtt_as import MQTTClient, config
 from yolo_uno import *
 from dht20 import *
 from pins import *
+import json
+import time
+import os
+
+try:
+  import ntptime
+except ImportError:
+  ntptime = None
 
 cfg = config.copy()
 lcd_dang_hien_thi_che_do = False
+IRRIGATION_FILE = 'irrigation.json'
+irrigation = {'mode': 'moisture', 'days': [0, 1, 2, 3, 4, 5, 6], 'slots': []}
+clock_ready = False
+watering_deadline = None
+watering_mode = None
+schedule_date = None
+schedule_done = []
+
+def validate_irrigation(value):
+  if not isinstance(value, dict) or value.get('mode') not in ('moisture', 'schedule'):
+    raise ValueError('Invalid watering mode')
+  days = value.get('days', [])
+  slots = value.get('slots', [])
+  if not isinstance(days, list) or not days or any(type(day) != int or day < 0 or day > 6 for day in days):
+    raise ValueError('Select watering days')
+  if not isinstance(slots, list) or len(slots) > 32:
+    raise ValueError('Maximum 32 watering times')
+  result = []
+  seen = []
+  for slot in slots:
+    hour = slot.get('time', '')
+    seconds = slot.get('seconds')
+    if not isinstance(hour, str) or len(hour) != 5 or hour[2] != ':' or not hour[:2].isdigit() or not hour[3:].isdigit():
+      raise ValueError('Invalid watering time')
+    if int(hour[:2]) > 23 or int(hour[3:]) > 59 or hour in seen:
+      raise ValueError('Invalid or duplicate watering time')
+    if type(seconds) != int or seconds < 1 or seconds > 3600:
+      raise ValueError('Duration must be 1-3600 seconds')
+    seen.append(hour)
+    result.append({'time': hour, 'seconds': seconds})
+  if value['mode'] == 'schedule' and not result:
+    raise ValueError('Add a watering time')
+  return {'mode': value['mode'], 'days': sorted(set(days)), 'slots': result}
+
+def save_irrigation(value):
+  # Write a complete replacement before replacing the previous configuration.
+  with open(IRRIGATION_FILE + '.tmp', 'w') as target:
+    target.write(json.dumps(value))
+  os.rename(IRRIGATION_FILE + '.tmp', IRRIGATION_FILE)
+
+def load_irrigation():
+  global irrigation
+  try:
+    with open(IRRIGATION_FILE) as source:
+      irrigation = validate_irrigation(json.loads(source.read()))
+  except (OSError, ValueError, TypeError, AttributeError):
+    pass
+
+async def publish_irrigation_status(error=None):
+  await mqtt_client.publish('V19', json.dumps({'config': irrigation, 'clock_ready': clock_ready, 'error': error}))
+
+async def on_mqtt_msg_V20(topic, msg):
+  global clock_ready
+  try:
+    import machine
+    timestamp = int(msg)
+    if timestamp < 1704067200 or timestamp > 4102444800:
+      raise ValueError('Invalid clock')
+    if time.gmtime(0)[0] == 2000:
+      timestamp -= 946684800
+    now = time.gmtime(timestamp)
+    machine.RTC().datetime((now[0], now[1], now[2], now[6] + 1, now[3], now[4], now[5], 0))
+    clock_ready = True
+  except (ValueError, TypeError, ImportError) as error:
+    print('Web clock:', error)
+  await publish_irrigation_status()
+
+async def on_mqtt_msg_V18(topic, msg):
+  global irrigation
+  try:
+    updated = validate_irrigation(json.loads(msg))
+    save_irrigation(updated)
+    irrigation = updated
+  except (OSError, ValueError, TypeError, AttributeError) as error:
+    await publish_irrigation_status(str(error))
+    return
+  await publish_irrigation_status()
+
+async def publish_pump_state():
+  # Network delays must never delay the pump's stop deadline.
+  try:
+    await mqtt_client.publish('V7', bool_payload(bom_IoT))
+  except Exception as error:
+    print('Pump MQTT:', error)
+
+def stop_automatic_watering():
+  global watering_deadline, watering_mode, bom_IoT
+  relay.set_relay(1, 0)
+  bom_IoT = False
+  watering_deadline = None
+  watering_mode = None
+  create_task(publish_pump_state())
+
+def start_automatic_watering(seconds):
+  global watering_deadline, watering_mode, bom_IoT
+  watering_deadline = time.ticks_add(time.ticks_ms(), int(seconds * 1000))
+  watering_mode = irrigation['mode']
+  relay.set_relay(1, 1)
+  bom_IoT = True
+  create_task(publish_pump_state())
+
+def scheduled_watering_seconds(now):
+  global schedule_date, schedule_done
+  date = (now[0], now[1], now[2])
+  if schedule_date != date:
+    schedule_date = date
+    schedule_done = []
+  if now[6] not in irrigation['days']:
+    return None
+  current = '%02d:%02d' % (now[3], now[4])
+  for slot in irrigation['slots']:
+    if slot['time'] == current and current not in schedule_done:
+      schedule_done.append(current)
+      return slot['seconds']
+  return None
+
+async def task_automatic_watering():
+  # Runs independently from MQTT publishing, LCD updates, fan and light control.
+  last_moisture_check = time.ticks_ms()
+  while True:
+    if watering_deadline is not None:
+      if manual_mode or watering_mode != irrigation['mode'] or time.ticks_diff(time.ticks_ms(), watering_deadline) >= 0:
+        stop_automatic_watering()
+    if not manual_mode:
+      if irrigation['mode'] == 'schedule' and clock_ready:
+        seconds = scheduled_watering_seconds(time.gmtime(time.time() + 7 * 3600))
+        if seconds is not None and watering_deadline is None and not bom_IoT:
+          start_automatic_watering(seconds)
+      elif irrigation['mode'] == 'moisture' and time.ticks_diff(time.ticks_ms(), last_moisture_check) >= 10000:
+        last_moisture_check = time.ticks_ms()
+        if watering_deadline is None and not bom_IoT and Do_am_dat_1 is not None and Do_am_dat_2 is not None:
+          if Do_am_dat_1 <= nguong_Do_Am or Do_am_dat_2 <= nguong_Do_Am:
+            start_automatic_watering(thoi_gian_tuoi_nuoc)
+    await asleep_ms(200)
+
+async def task_sync_clock():
+  global clock_ready
+  while True:
+    if not bom_IoT and ntptime is not None:
+      try:
+        ntptime.timeout = 2
+        ntptime.settime()
+        clock_ready = time.gmtime()[0] >= 2024
+        create_task(report_clock_status())
+      except Exception as error:
+        print('Clock sync:', error)
+    # Retry after a minute; after success resync every six hours.
+    for _ in range(21600 if clock_ready else 60):
+      await asleep_ms(1000)
+
+async def report_clock_status():
+  try:
+    await publish_irrigation_status()
+  except Exception as error:
+    print('Clock MQTT:', error)
 
 async def LCD_hien_thi_che_do():
   global lcd_dang_hien_thi_che_do
@@ -30,6 +193,8 @@ async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m_kk():
 
 async def on_mqtt_msg_V7(topic, msg):
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
+  if not manual_mode:
+    return
   if msg == '1':
     if manual_mode:
       relay.set_relay(1, 1)
@@ -75,10 +240,13 @@ async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A
 
 async def on_mqtt_msg_V9(topic, msg):
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
+  previous_manual_mode = manual_mode
   if msg == '1':
     manual_mode = True
   else:
     manual_mode = False
+  if (manual_mode and watering_deadline is not None) or (previous_manual_mode and not manual_mode and bom_IoT):
+    stop_automatic_watering()
   if lcd_dang_hien_thi_che_do:
     await LCD_hien_thi_che_do()
 
@@ -154,6 +322,7 @@ def bool_payload(value):
 async def publish_current_state():
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, thoi_gian_tuoi_nuoc, nguong_Bat_Quat, nguong_Tat_Quat, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
   await mqtt_client.publish('V10', 'HERE')
+  await publish_irrigation_status()
   await update_sensor_values()
   snapshot = [
     ('V1', Nhiet_do),
@@ -218,6 +387,8 @@ cfg['topics'].append(('V14', on_mqtt_msg_V14))
 cfg['topics'].append(('V15', on_mqtt_msg_V15))
 cfg['topics'].append(('V16', on_mqtt_msg_V16))
 cfg['topics'].append(('V17', on_mqtt_msg_V17))
+cfg['topics'].append(('V18', on_mqtt_msg_V18))
+cfg['topics'].append(('V20', on_mqtt_msg_V20))
 
 def deinit():
   mqtt_client.close()
@@ -277,14 +448,6 @@ async def task_P_T_K_R():
         relay.set_relay(3, 0)
         den_IoT = False
         await mqtt_client.publish('V6', '0')
-      if Do_am_dat_1 <= nguong_Do_Am or Do_am_dat_2 <= nguong_Do_Am:
-        relay.set_relay(1, 1)
-        bom_IoT = True
-        await mqtt_client.publish('V7', '1')
-        await asleep_ms(int(thoi_gian_tuoi_nuoc*1000))
-        relay.set_relay(1, 0)
-        bom_IoT = False
-        await mqtt_client.publish('V7', '0')
 
 async def setup():
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
@@ -301,6 +464,7 @@ async def setup():
   nguong_Tat_Den = 100
   nguong_Do_Am = 50
   thoi_gian_tuoi_nuoc = 5
+  load_irrigation()
   neopix.show(0, hex_to_rgb('#ff0000'))
   lcd1602.show(str('Wifi...'), 1 - 1, 1 - 1)
   await mqtt_client.connect()
@@ -311,6 +475,8 @@ async def setup():
 
   create_task(task_x_V_D_p())
   create_task(task_P_T_K_R())
+  create_task(task_automatic_watering())
+  create_task(task_sync_clock())
 
 async def main():
   await setup()

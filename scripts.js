@@ -14,6 +14,9 @@
     fan: 'V8',
     mode: 'V9',
     presence: 'V10',
+    irrigation: 'V18',
+    irrigationStatus: 'V19',
+    clock: 'V20',
   };
 
   const RULE_PARAMETER_CHANNELS = {
@@ -109,6 +112,11 @@
       fanOn: 30,
       fanOff: 25,
     },
+    irrigation: {
+      mode: 'moisture',
+      days: [0, 1, 2, 3, 4, 5, 6],
+      slots: [{ time: '08:00', seconds: 5 }, { time: '17:00', seconds: 5 }],
+    },
     cameraUrl: 'http://192.168.1.4:81/stream',
     history: [],
     alerts: [],
@@ -156,6 +164,9 @@
   let cameraRetryCount = 0;
   let cameraLiveAssumeTimer = null;
   let appliedCameraUrl = '';
+  let irrigationDirty = false;
+  let irrigationPending = null;
+  let irrigationAckTimer = null;
 
   document.addEventListener('DOMContentLoaded', init);
 
@@ -163,6 +174,7 @@
     bindElements();
     hydrateInputs();
     bindEvents();
+    bindIrrigation();
     renderAll();
     updateClock();
     connectMqtt();
@@ -519,6 +531,7 @@
       }
 
       updateMqttDetail();
+      publishChannel(CHANNELS.clock, Math.floor(Date.now() / 1000));
       setMqttStatus('MQTT OK - chờ Smart Farm', 'warning');
       startSmartFarmHeartbeat();
       if (Date.now() - smartFarmSyncRequestedAt > SMART_FARM_SYNC_GUARD_MS) {
@@ -531,6 +544,11 @@
   function handleMqttMessage(topic, payload) {
     const message = payload.toString().trim();
     const channel = extractChannel(topic);
+
+    if (channel === CHANNELS.irrigationStatus) {
+      handleIrrigationStatus(message);
+      return;
+    }
 
     if (channel === CHANNELS.presence) {
       handleSmartFarmPresence(message);
@@ -591,6 +609,154 @@
     const messages = pendingMessages.slice();
     pendingMessages = [];
     messages.forEach((item) => publishChannel(item.channel, item.message));
+  }
+
+  function irrigationStatus(text) {
+    document.getElementById('irrigationStatus').textContent = text;
+  }
+
+  function markIrrigationDirty() {
+    irrigationDirty = true;
+    irrigationStatus('Có thay đổi chưa lưu xuống ESP32.');
+  }
+
+  function renderIrrigation() {
+    const config = state.irrigation;
+    document.querySelectorAll('[data-irrigation-mode]').forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.irrigationMode === config.mode));
+    });
+    document.querySelectorAll('[data-irrigation-day]').forEach((button) => {
+      const selected = button.dataset.irrigationDay === 'all' ? config.days.length === 7 : config.days.includes(Number(button.dataset.irrigationDay));
+      button.setAttribute('aria-pressed', String(selected));
+    });
+    const scheduled = config.mode === 'schedule';
+    document.getElementById('irrigationScheduleFields').hidden = !scheduled;
+    document.getElementById('irrigationMoistureHint').hidden = scheduled;
+    const container = document.getElementById('irrigationSlots');
+    container.replaceChildren();
+    config.slots.forEach((slot, index) => {
+      const row = document.createElement('div');
+      row.className = 'irrigation-slot';
+      const timeLabel = document.createElement('label');
+      timeLabel.textContent = `Giờ tưới ${index + 1}`;
+      const time = document.createElement('input');
+      time.type = 'time';
+      time.required = scheduled;
+      time.disabled = !scheduled;
+      time.value = slot.time;
+      time.addEventListener('input', () => { slot.time = time.value; markIrrigationDirty(); });
+      timeLabel.append(time);
+      const secondsLabel = document.createElement('label');
+      secondsLabel.textContent = 'Thời gian (giây)';
+      const seconds = document.createElement('input');
+      seconds.type = 'number';
+      seconds.min = '1';
+      seconds.max = '3600';
+      seconds.step = '1';
+      seconds.required = scheduled;
+      seconds.disabled = !scheduled;
+      seconds.value = slot.seconds;
+      seconds.addEventListener('input', () => { slot.seconds = Number(seconds.value); markIrrigationDirty(); });
+      secondsLabel.append(seconds);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = 'Xóa';
+      remove.setAttribute('aria-label', `Xóa mốc tưới ${index + 1}`);
+      remove.addEventListener('click', () => {
+        config.slots.splice(index, 1);
+        markIrrigationDirty();
+        renderIrrigation();
+      });
+      row.append(timeLabel, secondsLabel, remove);
+      container.append(row);
+    });
+    document.getElementById('addIrrigationSlot').disabled = config.slots.length >= 32;
+  }
+
+  function bindIrrigation() {
+    renderIrrigation();
+    document.querySelectorAll('[data-irrigation-mode]').forEach((button) => {
+      button.addEventListener('click', () => {
+        state.irrigation.mode = button.dataset.irrigationMode;
+        markIrrigationDirty();
+        renderIrrigation();
+      });
+    });
+    document.querySelectorAll('[data-irrigation-day]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const day = button.dataset.irrigationDay;
+        const days = state.irrigation.days;
+        state.irrigation.days = day === 'all' ? [0, 1, 2, 3, 4, 5, 6]
+          : days.includes(Number(day)) ? days.filter((item) => item !== Number(day)) : [...days, Number(day)].sort();
+        markIrrigationDirty();
+        renderIrrigation();
+      });
+    });
+    document.getElementById('addIrrigationSlot').addEventListener('click', () => {
+      if (state.irrigation.slots.length >= 32) return;
+      state.irrigation.slots.push({ time: '', seconds: state.thresholds.pumpDuration });
+      markIrrigationDirty();
+      renderIrrigation();
+      document.querySelector('.irrigation-slot:last-child input').focus();
+    });
+    document.getElementById('activateEspIrrigation').addEventListener('click', () => {
+      setIotMode(false, { source: 'user' });
+    });
+    document.getElementById('irrigationForm').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const config = state.irrigation;
+      const times = config.slots.map((slot) => slot.time);
+      if (!config.days.length) { irrigationStatus('Chọn ít nhất một ngày tưới.'); return; }
+      if (config.mode === 'schedule' && !config.slots.length) { irrigationStatus('Thêm ít nhất một mốc giờ.'); return; }
+      if (times.some((time) => !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) || new Set(times).size !== times.length) {
+        irrigationStatus('Mỗi mốc cần giờ hợp lệ và không trùng nhau.'); return;
+      }
+      if (config.slots.some((slot) => !Number.isInteger(slot.seconds) || slot.seconds < 1 || slot.seconds > 3600)) {
+        irrigationStatus('Thời gian mỗi mốc cần từ 1 đến 3600 giây.'); return;
+      }
+      irrigationPending = JSON.stringify(config);
+      saveState();
+      irrigationStatus(mqttConnected ? 'Đang gửi, chờ ESP32 xác nhận…' : 'Đang chờ kết nối MQTT để gửi cấu hình…');
+      publishChannel(CHANNELS.irrigation, irrigationPending);
+      publishChannel(CHANNELS.clock, Math.floor(Date.now() / 1000));
+      window.clearTimeout(irrigationAckTimer);
+      irrigationAckTimer = window.setTimeout(() => {
+        if (irrigationPending) irrigationStatus('Chưa có xác nhận từ ESP32. Kiểm tra kết nối và nạp chương trình ESP32 mới, rồi lưu lại.');
+      }, 15000);
+    });
+  }
+
+  function handleIrrigationStatus(message) {
+    try {
+      const status = JSON.parse(message);
+      const config = status.config;
+      if (!config || !['moisture', 'schedule'].includes(config.mode) || !Array.isArray(config.days) || !Array.isArray(config.slots)) return;
+      if (status.error) { irrigationStatus(`ESP32 chưa lưu được: ${status.error}`); return; }
+      const matchesPending = irrigationPending && sameIrrigation(config, JSON.parse(irrigationPending));
+      if (irrigationPending && !matchesPending) return;
+      if (matchesPending) {
+        window.clearTimeout(irrigationAckTimer);
+        irrigationPending = null;
+        // Preserve any new edits made while waiting for the previous save.
+        irrigationDirty = !sameIrrigation(state.irrigation, config);
+      }
+      if (irrigationDirty) {
+        irrigationStatus(matchesPending ? 'ESP32 đã lưu cấu hình vừa gửi. Bạn còn thay đổi mới chưa lưu.' : 'Có thay đổi chưa lưu xuống ESP32.');
+        return;
+      }
+      state.irrigation = config;
+      saveState();
+      renderIrrigation();
+      const clock = config.mode === 'schedule' && !status.clock_ready ? ' Đang chờ đồng bộ giờ từ Internet hoặc web; lịch chưa chạy.' : '';
+      irrigationStatus(`ESP32 đã xác nhận cấu hình.${clock} Chạy khi chọn “ESP tự động”.`);
+    } catch (error) {
+      // Ignore malformed status messages.
+    }
+  }
+
+  function sameIrrigation(left, right) {
+    const canonical = (config) => JSON.stringify({ mode: config.mode, days: [...config.days].sort(), slots: [...config.slots].sort((a, b) => a.time.localeCompare(b.time)).map((slot) => ({ time: slot.time, seconds: slot.seconds })) });
+    return canonical(left) === canonical(right);
   }
 
   function publishRuleParameters() {

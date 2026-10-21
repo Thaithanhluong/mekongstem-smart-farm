@@ -246,6 +246,48 @@
         </div>
       </details>
 
+      <details class="panel irrigation-panel collapsible-panel" open>
+        <summary class="panel__header panel__summary">
+          <div>
+            <p class="panel__eyebrow">LỊCH TƯỚI</p>
+            <h2>Tưới tự động trên ESP32</h2>
+          </div>
+          <svg class="panel__chevron" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
+        </summary>
+        <div class="panel__content">
+          <p class="irrigation-hint">Chọn cách tưới, lưu xuống ESP32 rồi bật “ESP tự động”. Sau khi ESP xác nhận, bạn có thể đóng web.</p>
+          <form id="irrigationForm" class="irrigation-form">
+            <div class="irrigation-pills" role="group" aria-label="Cách tưới tự động">
+              <button type="button" data-irrigation-mode="moisture" aria-pressed="true">Theo độ ẩm</button>
+              <button type="button" data-irrigation-mode="schedule" aria-pressed="false">Theo lịch</button>
+            </div>
+            <p id="irrigationMoistureHint" class="irrigation-hint">ESP tưới khi một trong hai cảm biến đất chạm ngưỡng. Ngưỡng độ ẩm và thời gian tưới dùng các thông số ở phần trên.</p>
+            <div id="irrigationScheduleFields" hidden>
+              <p class="irrigation-label">Ngày tưới</p>
+              <div id="irrigationDays" class="irrigation-pills" role="group" aria-label="Ngày tưới trong tuần">
+                <button type="button" data-irrigation-day="all" aria-pressed="true">Mỗi ngày</button>
+                <button type="button" data-irrigation-day="0" aria-pressed="true">T2</button>
+                <button type="button" data-irrigation-day="1" aria-pressed="true">T3</button>
+                <button type="button" data-irrigation-day="2" aria-pressed="true">T4</button>
+                <button type="button" data-irrigation-day="3" aria-pressed="true">T5</button>
+                <button type="button" data-irrigation-day="4" aria-pressed="true">T6</button>
+                <button type="button" data-irrigation-day="5" aria-pressed="true">T7</button>
+                <button type="button" data-irrigation-day="6" aria-pressed="true">CN</button>
+              </div>
+              <p class="irrigation-label">Các mốc tưới · Giờ Việt Nam (UTC+7)</p>
+              <div id="irrigationSlots" class="irrigation-slots"></div>
+              <button id="addIrrigationSlot" type="button" class="irrigation-add">+ Thêm mốc giờ</button>
+              <p class="irrigation-hint">Mỗi mốc chạy một lần trong ngày đã chọn. Mốc trùng lúc bơm đang tưới sẽ được bỏ qua; lịch đã qua không tưới bù.</p>
+            </div>
+            <div class="irrigation-actions">
+              <button type="submit" class="irrigation-save">Lưu xuống ESP32</button>
+              <button id="activateEspIrrigation" type="button">Bật ESP tự động</button>
+            </div>
+            <p id="irrigationStatus" class="irrigation-hint" role="status" aria-live="polite">Chưa nhận cấu hình từ ESP32.</p>
+          </form>
+        </div>
+      </details>
+
       <details class="panel camera-panel collapsible-panel">
         <summary class="panel__header panel__summary">
           <div>

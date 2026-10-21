@@ -445,6 +445,7 @@ button {
 
 .controls-panel,
 .automation-panel,
+.irrigation-panel,
 .camera-panel,
 .iot-panel,
 .alerts-panel {
@@ -648,6 +649,63 @@ button {
   display: grid;
   gap: 12px;
 }
+
+.irrigation-form, .irrigation-slots {
+  display: grid;
+  gap: 12px;
+}
+.irrigation-hint {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+.irrigation-label { font-size: 13px; font-weight: 800; margin: 16px 0 10px; }
+.irrigation-pills, .irrigation-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.irrigation-panel button {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.irrigation-pills button { border-radius: 999px; }
+.irrigation-pills button[aria-pressed="true"], .irrigation-panel .irrigation-save {
+  background: var(--farm-green);
+  border-color: var(--farm-green);
+  color: #fff;
+}
+.irrigation-panel button:focus-visible, .irrigation-panel input:focus-visible { outline: 3px solid #86cda4; outline-offset: 2px; }
+.irrigation-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfdfc;
+}
+.irrigation-slot label { display: grid; gap: 6px; font-size: 12px; font-weight: 700; }
+.irrigation-slot input {
+  min-height: 40px;
+  width: 130px;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+.irrigation-panel .irrigation-add { margin-top: 12px; color: var(--farm-green); }
+.irrigation-panel button:disabled { opacity: .5; cursor: default; }
+.irrigation-panel [hidden] { display: none !important; }
 
 .automation-toggle,
 .compact-input {
