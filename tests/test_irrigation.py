@@ -3,12 +3,15 @@ import ast
 import asyncio
 import copy
 import json
+import io
 import os
 from pathlib import Path
 import tempfile
 import time
 from types import SimpleNamespace
 import unittest
+from contextlib import redirect_stdout
+from unittest.mock import patch
 
 
 SOURCE = Path(__file__).resolve().parents[1] / 'esp32_scratch_mqtt.py'
@@ -52,6 +55,7 @@ class IrrigationTests(unittest.TestCase):
                        irrigation=copy.deepcopy(SCHEDULE), clock_ready=True, manual_mode=False,
                        bom_IoT=False, watering_deadline=None, watering_mode=None,
                        lcd_dang_hien_thi_che_do=False,
+                       clock_warning_reported=False,
                        schedule_date=None, schedule_done=[], Do_am_dat_1=20, Do_am_dat_2=70,
                        nguong_Do_Am=50, thoi_gian_tuoi_nuoc=3)
         exec(compile(FUNCTIONS, str(SOURCE), 'exec'), self.ns)
@@ -134,6 +138,34 @@ class IrrigationTests(unittest.TestCase):
         topic, payload = self.published[-1]
         self.assertEqual(topic, 'V19')
         self.assertFalse(json.loads(payload)['manual_mode'])
+
+    def test_web_clock_accepts_seconds_milliseconds_and_quoted_payloads(self):
+        parse = self.ns['parse_web_clock']
+        for payload in ('1792544400', b'1792544400', '1792544400000', '"1792544400"', ' 1792544400 '):
+            self.assertEqual(parse(payload), 1792544400)
+        for payload in ('0', '1', '-1', '20261021', 'null', '{}', 'invalid', '99999999999999999'):
+            with self.assertRaises((ValueError, TypeError)):
+                parse(payload)
+
+    def test_repeated_bad_clock_logs_once_and_keeps_valid_clock(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            for _ in range(20):
+                asyncio.run(self.ns['on_mqtt_msg_V20']('V20', '0'))
+        self.assertEqual(output.getvalue().count('Web clock:'), 1)
+        self.assertIn("'0'", output.getvalue())
+        self.assertTrue(self.ns['clock_ready'])
+        self.assertEqual(self.published, [])
+
+    def test_valid_web_clock_sets_rtc_and_confirms(self):
+        datetimes = []
+        machine = SimpleNamespace(RTC=lambda: SimpleNamespace(datetime=datetimes.append))
+        self.ns['clock_ready'] = False
+        with patch.dict('sys.modules', {'machine': machine}):
+            asyncio.run(self.ns['on_mqtt_msg_V20']('V20', '1792544400000'))
+        self.assertEqual(datetimes, [(2026, 10, 21, 3, 1, 0, 0, 0)])
+        self.assertTrue(self.ns['clock_ready'])
+        self.assertTrue(json.loads(self.published[-1][1])['clock_ready'])
 
     def test_schedule_repeats_next_day_and_never_catches_up(self):
         due = self.ns['scheduled_watering_seconds']

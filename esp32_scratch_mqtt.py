@@ -18,6 +18,7 @@ lcd_dang_hien_thi_che_do = False
 IRRIGATION_FILE = 'irrigation.json'
 irrigation = {'mode': 'moisture', 'days': [0, 1, 2, 3, 4, 5, 6], 'slots': []}
 clock_ready = False
+clock_warning_reported = False
 watering_deadline = None
 watering_mode = None
 schedule_date = None
@@ -66,20 +67,45 @@ def load_irrigation():
 async def publish_irrigation_status(error=None):
   await mqtt_client.publish('V19', json.dumps({'config': irrigation, 'clock_ready': clock_ready, 'manual_mode': manual_mode, 'error': error}))
 
+def parse_web_clock(msg):
+  if isinstance(msg, bytes):
+    msg = msg.decode()
+  if isinstance(msg, str):
+    msg = msg.strip()
+    try:
+      msg = json.loads(msg)
+    except ValueError:
+      pass
+  timestamp = int(msg)
+  # Accept Unix seconds and milliseconds, before converting the board's epoch.
+  if timestamp >= 1000000000000:
+    timestamp //= 1000
+  if timestamp < 1704067200 or timestamp > 4102444800:
+    raise ValueError('Invalid clock')
+  return timestamp
+
 async def on_mqtt_msg_V20(topic, msg):
-  global clock_ready
+  global clock_ready, clock_warning_reported
+  try:
+    timestamp = parse_web_clock(msg)
+  except (ValueError, TypeError, OverflowError):
+    # Invalid feed traffic must not reset the clock or generate response traffic.
+    if not clock_warning_reported:
+      print('Web clock: ignored invalid V20 payload:', repr(msg)[:80])
+      clock_warning_reported = True
+    return
   try:
     import machine
-    timestamp = int(msg)
-    if timestamp < 1704067200 or timestamp > 4102444800:
-      raise ValueError('Invalid clock')
     if time.gmtime(0)[0] == 2000:
       timestamp -= 946684800
     now = time.gmtime(timestamp)
     machine.RTC().datetime((now[0], now[1], now[2], now[6] + 1, now[3], now[4], now[5], 0))
     clock_ready = True
-  except (ValueError, TypeError, ImportError) as error:
-    print('Web clock:', error)
+  except (ValueError, TypeError, ImportError, OSError, OverflowError) as error:
+    if not clock_warning_reported:
+      print('Web clock: RTC update failed:', error)
+      clock_warning_reported = True
+    return
   await publish_irrigation_status()
 
 async def on_mqtt_msg_V18(topic, msg):
