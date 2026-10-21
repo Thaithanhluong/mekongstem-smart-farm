@@ -6,13 +6,20 @@ from dht20 import *
 from pins import *
 
 cfg = config.copy()
+lcd_dang_hien_thi_che_do = False
 
 async def LCD_hien_thi_che_do():
-  che_do = 'Thu Cong' if manual_mode else 'Tu Dong '
-  lcd1602.show(che_do, 1, 8)
+  global lcd_dang_hien_thi_che_do
+  lcd_dang_hien_thi_che_do = True
+  lcd1602.clear()
+  lcd1602.show('Che do hien tai:', 0, 0)
+  che_do = 'Thu Cong' if manual_mode else 'Tu Dong'
+  lcd1602.show(che_do, 1, 0)
 
 # Mô tả hàm này...
 async def LCD_hi_E1_BB_83n_th_E1_BB_8B_nhi_E1_BB_87t__C4_91_E1_BB_99():
+  global lcd_dang_hien_thi_che_do
+  lcd_dang_hien_thi_che_do = False
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, thoi_gian_tuoi_nuoc, nguong_Bat_Quat, nguong_Tat_Quat, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
   lcd1602.show(str((''.join([str(x) for x in ['T:', Nhiet_do, '*C']]))), 1 - 1, 1 - 1)
 
@@ -34,8 +41,7 @@ async def on_mqtt_msg_V7(topic, msg):
 # Mô tả hàm này...
 async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C3_A1nh_s_C3_A1ng():
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, thoi_gian_tuoi_nuoc, nguong_Bat_Quat, nguong_Tat_Quat, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
-  lcd1602.show(('LUX:' + str(Do_sang) + '        ')[:8], 1, 0)
-  await LCD_hien_thi_che_do()
+  lcd1602.show('LUX:' + str(Do_sang), 1, 0)
 
 async def on_mqtt_msg_V8(topic, msg):
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
@@ -49,6 +55,8 @@ async def on_mqtt_msg_V8(topic, msg):
 
 # Mô tả hàm này...
 async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A5t_1():
+  global lcd_dang_hien_thi_che_do
+  lcd_dang_hien_thi_che_do = False
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, thoi_gian_tuoi_nuoc, nguong_Bat_Quat, nguong_Tat_Quat, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
   lcd1602.show(str(('Do am 1:' + str(Do_am_dat_1))), 1 - 1, 1 - 1)
 
@@ -63,8 +71,7 @@ async def on_mqtt_msg_V10(topic, msg):
 # Mô tả hàm này...
 async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A5t_2():
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, thoi_gian_tuoi_nuoc, nguong_Bat_Quat, nguong_Tat_Quat, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
-  lcd1602.show(('Dat2:' + str(Do_am_dat_2) + '        ')[:8], 1, 0)
-  await LCD_hien_thi_che_do()
+  lcd1602.show('Do am 2:' + str(Do_am_dat_2), 1, 0)
 
 async def on_mqtt_msg_V9(topic, msg):
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
@@ -72,7 +79,8 @@ async def on_mqtt_msg_V9(topic, msg):
     manual_mode = True
   else:
     manual_mode = False
-  await LCD_hien_thi_che_do()
+  if lcd_dang_hien_thi_che_do:
+    await LCD_hien_thi_che_do()
 
 async def on_mqtt_msg_V12(topic, msg):
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2
@@ -126,6 +134,8 @@ async def Hi_E1_BB_83n_th_E1_BB_8B_ban__C4_91_E1_BA_A7u():
   lcd1602.clear()
   await LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A5t_1()
   await LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A5t_2()
+  await asleep_ms(3000)
+  await LCD_hien_thi_che_do()
 
 # Mô tả hàm này...
 async def update_sensor_values():
@@ -234,6 +244,8 @@ async def task_x_V_D_p():
     lcd1602.clear()
     await LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A5t_1()
     await LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A5t_2()
+    await asleep_ms(3000)
+    await LCD_hien_thi_che_do()
     await mqtt_client.publish('V1', Nhiet_do)
     await asleep_ms(200)
     await mqtt_client.publish('V2', Do_am_kk)
@@ -291,7 +303,6 @@ async def setup():
   thoi_gian_tuoi_nuoc = 5
   neopix.show(0, hex_to_rgb('#ff0000'))
   lcd1602.show(str('Wifi...'), 1 - 1, 1 - 1)
-  await LCD_hien_thi_che_do()
   await mqtt_client.connect()
   lcd1602.show(str('Wifi connected'), 1 - 1, 1 - 1)
   neopix.show(0, hex_to_rgb('#00ff00'))
