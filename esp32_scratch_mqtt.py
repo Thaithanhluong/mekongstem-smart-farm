@@ -64,7 +64,7 @@ def load_irrigation():
     pass
 
 async def publish_irrigation_status(error=None):
-  await mqtt_client.publish('V19', json.dumps({'config': irrigation, 'clock_ready': clock_ready, 'error': error}))
+  await mqtt_client.publish('V19', json.dumps({'config': irrigation, 'clock_ready': clock_ready, 'manual_mode': manual_mode, 'error': error}))
 
 async def on_mqtt_msg_V20(topic, msg):
   global clock_ready
@@ -249,6 +249,7 @@ async def on_mqtt_msg_V9(topic, msg):
     stop_automatic_watering()
   if lcd_dang_hien_thi_che_do:
     await LCD_hien_thi_che_do()
+  await publish_irrigation_status()
 
 async def on_mqtt_msg_V12(topic, msg):
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, nguong_Bat_Quat, nguong_Tat_Quat, thoi_gian_tuoi_nuoc, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT, snapshot, i, list2

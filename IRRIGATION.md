@@ -5,6 +5,8 @@
 3. Với lịch: chọn **Mỗi ngày** hoặc các ngày T2–CN, thêm giờ tưới và số giây cho từng mốc. Tối đa 32 mốc, mỗi mốc 1–3600 giây. Giờ dùng múi giờ Việt Nam (UTC+7).
 4. Nhấn **Lưu xuống ESP32**, chờ xác nhận, rồi nhấn **Bật ESP tự động**. Có thể đóng trình duyệt sau đó. Các ô “Luật vận hành trên web” không cần bật.
 
+Nút bật tự động chuyển sang **Đang bật…** trong khi chờ bo mạch trả lời, rồi hiện **✓ ESP tự động đã bật** màu xanh khi ESP xác nhận. Trong chế độ theo lịch, ESP chờ đến mốc đã lưu để chạy bơm. Nếu không nhận xác nhận sau 15 giây, web hiện nút thử lại. Cần nạp firmware mới để có phản hồi chế độ này.
+
 ESP tự chạy một trong hai cách tưới. Theo lịch sẽ không kích hoạt bơm vì đất khô; theo độ ẩm dùng ngưỡng V14 và thời gian V15 như trước. Đèn và quạt giữ quy tắc tự động riêng. Khi đổi cách tưới hoặc chuyển sang thủ công, lượt tưới tự động đang chạy sẽ dừng.
 
 Mỗi mốc lịch chỉ chạy một lần mỗi ngày trong một lần chạy chương trình. Mốc đã qua không tưới bù; mốc đến khi bơm đang chạy sẽ bị bỏ qua. Khi trở về tự động trong đúng phút đã hẹn, mốc chưa chạy có thể bắt đầu ngay.
@@ -16,7 +18,7 @@ Lịch lưu trong `irrigation.json` trên bo mạch và được đọc lại kh
 ## Kênh MQTT
 
 - **V18**: cấu hình JSON, ví dụ `{"mode":"schedule","days":[0,1,2,3,4,5,6],"slots":[{"time":"08:00","seconds":3},{"time":"17:00","seconds":5}]}`. Ngày 0 = T2, 6 = CN. `mode` nhận `schedule` hoặc `moisture`.
-- **V19**: xác nhận/trạng thái từ ESP: `config`, `clock_ready`, `error`. Web chỉ báo đã lưu sau khi nhận cấu hình khớp từ ESP.
+- **V19**: xác nhận/trạng thái từ ESP: `config`, `clock_ready`, `manual_mode`, `error`. ESP gửi phản hồi ngay khi nhận lệnh đổi chế độ V9. Web dùng phản hồi V19 để xác nhận đã bật tự động, tránh nhầm lệnh V9 do chính web gửi với phản hồi thật từ bo mạch.
 - **V20**: giờ UTC dạng Unix timestamp tính bằng giây, gửi từ web.
 - **V9**: giữ nguyên: `0` = ESP tự động, `1` = IoT thủ công.
 

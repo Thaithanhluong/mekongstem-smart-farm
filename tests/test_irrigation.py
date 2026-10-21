@@ -38,6 +38,9 @@ class IrrigationTests(unittest.TestCase):
         self.clock = SimulatedTime()
         self.events = []
         self.network_tasks = []
+        self.published = []
+        class MQTT:
+            async def publish(_, topic, payload): self.published.append((topic, payload))
         class Relay:
             def set_relay(_, channel, value): self.events.append((self.clock.ms, channel, value))
         # Do not execute reporting coroutines: simulate an indefinitely delayed broker.
@@ -45,7 +48,7 @@ class IrrigationTests(unittest.TestCase):
             self.network_tasks.append(coroutine)
         # MicroPython's filesystem rename replaces an existing file; Windows rename does not.
         filesystem = SimpleNamespace(rename=os.replace)
-        self.ns = dict(json=json, os=filesystem, time=self.clock, relay=Relay(), create_task=create_task,
+        self.ns = dict(json=json, os=filesystem, time=self.clock, relay=Relay(), mqtt_client=MQTT(), create_task=create_task,
                        irrigation=copy.deepcopy(SCHEDULE), clock_ready=True, manual_mode=False,
                        bom_IoT=False, watering_deadline=None, watering_mode=None,
                        lcd_dang_hien_thi_che_do=False,
@@ -121,6 +124,16 @@ class IrrigationTests(unittest.TestCase):
         asyncio.run(self.ns['on_mqtt_msg_V7']('V7', '0'))
         self.assertTrue(self.ns['bom_IoT'])
         self.assertEqual(self.events, [])
+
+    def test_mode_confirmation_comes_from_firmware_on_separate_channel(self):
+        asyncio.run(self.ns['on_mqtt_msg_V9']('V9', '1'))
+        topic, payload = self.published[-1]
+        self.assertEqual(topic, 'V19')
+        self.assertTrue(json.loads(payload)['manual_mode'])
+        asyncio.run(self.ns['on_mqtt_msg_V9']('V9', '0'))
+        topic, payload = self.published[-1]
+        self.assertEqual(topic, 'V19')
+        self.assertFalse(json.loads(payload)['manual_mode'])
 
     def test_schedule_repeats_next_day_and_never_catches_up(self):
         due = self.ns['scheduled_watering_seconds']

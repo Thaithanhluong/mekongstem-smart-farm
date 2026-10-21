@@ -167,6 +167,11 @@
   let irrigationDirty = false;
   let irrigationPending = null;
   let irrigationAckTimer = null;
+  let espConfirmedManualMode = null;
+  let espActivationState = 'idle';
+  let espActivationTimer = null;
+  let espIrrigationConfig = null;
+  let espClockReady = false;
 
   document.addEventListener('DOMContentLoaded', init);
 
@@ -476,6 +481,7 @@
     });
 
     mqttClient.on('reconnect', () => {
+      invalidateEspModeConfirmation();
       mqttConnected = false;
       smartFarmConnected = false;
       stopSmartFarmHeartbeat();
@@ -483,6 +489,7 @@
     });
 
     mqttClient.on('close', () => {
+      invalidateEspModeConfirmation();
       mqttConnected = false;
       smartFarmConnected = false;
       stopSmartFarmHeartbeat();
@@ -675,6 +682,7 @@
 
   function bindIrrigation() {
     renderIrrigation();
+    renderEspIrrigationMode();
     document.querySelectorAll('[data-irrigation-mode]').forEach((button) => {
       button.addEventListener('click', () => {
         state.irrigation.mode = button.dataset.irrigationMode;
@@ -731,6 +739,19 @@
       const status = JSON.parse(message);
       const config = status.config;
       if (!config || !['moisture', 'schedule'].includes(config.mode) || !Array.isArray(config.days) || !Array.isArray(config.slots)) return;
+      if (typeof status.manual_mode === 'boolean') {
+        espConfirmedManualMode = status.manual_mode;
+        espIrrigationConfig = config;
+        espClockReady = status.clock_ready === true;
+        state.controls.iotMode = status.manual_mode;
+        saveState();
+        renderMode();
+        if (!status.manual_mode || espActivationState !== 'pending') {
+          window.clearTimeout(espActivationTimer);
+          espActivationState = 'idle';
+        }
+        renderEspIrrigationMode();
+      }
       if (status.error) { irrigationStatus(`ESP32 chưa lưu được: ${status.error}`); return; }
       const matchesPending = irrigationPending && sameIrrigation(config, JSON.parse(irrigationPending));
       if (irrigationPending && !matchesPending) return;
@@ -757,6 +778,34 @@
   function sameIrrigation(left, right) {
     const canonical = (config) => JSON.stringify({ mode: config.mode, days: [...config.days].sort(), slots: [...config.slots].sort((a, b) => a.time.localeCompare(b.time)).map((slot) => ({ time: slot.time, seconds: slot.seconds })) });
     return canonical(left) === canonical(right);
+  }
+
+  function renderEspIrrigationMode() {
+    const button = document.getElementById('activateEspIrrigation');
+    const status = document.getElementById('espIrrigationModeStatus');
+    const pending = espActivationState === 'pending';
+    const active = espConfirmedManualMode === false && !pending;
+    button.disabled = pending || active;
+    button.setAttribute('aria-busy', String(pending));
+    button.classList.toggle('is-confirmed', active);
+    button.textContent = pending ? 'Đang bật…' : active ? '✓ ESP tự động đã bật' : espActivationState === 'timeout' ? 'Thử bật ESP tự động' : 'Bật ESP tự động';
+    status.dataset.state = pending ? 'pending' : active ? 'active' : espActivationState;
+    if (pending) {
+      status.textContent = mqttConnected ? 'Đã gửi yêu cầu bật tự động. Đang chờ ESP32 xác nhận…' : 'Đang chờ kết nối MQTT để gửi yêu cầu bật tự động…';
+    } else if (active) {
+      status.textContent = espIrrigationConfig?.mode === 'schedule'
+        ? espClockReady ? 'ESP32 đã bật tự động, chờ đến giờ tưới trong lịch đã lưu. Bạn có thể đóng web.' : 'ESP32 đã bật tự động. Đang chờ đồng bộ giờ để chạy lịch.'
+        : 'ESP32 đã bật tự động, tưới khi độ ẩm đất chạm ngưỡng. Bạn có thể đóng web.';
+    } else if (espActivationState === 'timeout') {
+      status.textContent = 'Chưa nhận được xác nhận từ ESP32. Kiểm tra kết nối, nạp chương trình ESP32 mới rồi thử lại.';
+    } else {
+      status.textContent = espConfirmedManualMode === true ? 'ESP32 đang ở chế độ thủ công. Bật ESP tự động để chạy cách tưới đã lưu.' : 'Chưa có xác nhận chế độ từ ESP32.';
+    }
+  }
+
+  function invalidateEspModeConfirmation() {
+    espConfirmedManualMode = null;
+    renderEspIrrigationMode();
   }
 
   function publishRuleParameters() {
@@ -886,6 +935,7 @@
 
     smartFarmConnected = false;
     setMqttStatus('Mất kết nối Smart Farm', 'warning');
+    invalidateEspModeConfirmation();
   }
 
   function setMqttStatus(label, tone) {
@@ -918,6 +968,17 @@
     renderMode();
 
     if (options.publish !== false) {
+      espConfirmedManualMode = null;
+      window.clearTimeout(espActivationTimer);
+      espActivationState = next ? 'idle' : 'pending';
+      renderEspIrrigationMode();
+      if (!next) {
+        espActivationTimer = window.setTimeout(() => {
+          if (espActivationState !== 'pending') return;
+          espActivationState = 'timeout';
+          renderEspIrrigationMode();
+        }, 15000);
+      }
       publishChannel(CHANNELS.mode, next ? '1' : '0');
     }
 
