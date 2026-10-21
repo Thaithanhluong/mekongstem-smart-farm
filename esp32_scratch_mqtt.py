@@ -34,7 +34,7 @@ async def on_mqtt_msg_V7(topic, msg):
 # Mô tả hàm này...
 async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C3_A1nh_s_C3_A1ng():
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, thoi_gian_tuoi_nuoc, nguong_Bat_Quat, nguong_Tat_Quat, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
-  lcd1602.show(('LUX:' + str(Do_sang))[:8].ljust(8), 1, 0)
+  lcd1602.show(('LUX:' + str(Do_sang) + '        ')[:8], 1, 0)
   await LCD_hien_thi_che_do()
 
 async def on_mqtt_msg_V8(topic, msg):
@@ -63,7 +63,7 @@ async def on_mqtt_msg_V10(topic, msg):
 # Mô tả hàm này...
 async def LCD_hi_E1_BB_83n_th_E1_BB_8B__C4_91_E1_BB_99__E1_BA_A9m__C4_91_E1_BA_A5t_2():
   global Nhiet_do, check_connect, nguong_Bat_Den, nguong_Tat_Den, nguong_Do_Am, thoi_gian_tuoi_nuoc, nguong_Bat_Quat, nguong_Tat_Quat, Do_am_kk, manual_mode, bom_IoT, Do_sang, Do_am_dat_1, Do_am_dat_2, den_IoT, quat_IoT
-  lcd1602.show(('Dat2:' + str(Do_am_dat_2))[:8].ljust(8), 1, 0)
+  lcd1602.show(('Dat2:' + str(Do_am_dat_2) + '        ')[:8], 1, 0)
   await LCD_hien_thi_che_do()
 
 async def on_mqtt_msg_V9(topic, msg):
