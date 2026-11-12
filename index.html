@@ -11,6 +11,7 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
   <link href="styles.css" rel="stylesheet" />
   <script defer src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script defer src="farm-config.js"></script>
   <script defer src="scripts.js"></script>
 </head>
 <body>
@@ -158,7 +159,7 @@
               <p id="lightControlStatus">Tắt</p>
             </div>
             <label class="switch">
-              <input id="lightToggle" type="checkbox" />
+              <input id="lightToggle" type="checkbox" aria-label="Bật/tắt đèn trồng cây" />
               <span></span>
             </label>
           </div>
@@ -170,7 +171,7 @@
               <p id="pumpControlStatus">Tắt</p>
             </div>
             <label class="switch">
-              <input id="pumpToggle" type="checkbox" />
+              <input id="pumpToggle" type="checkbox" aria-label="Bật/tắt bơm tưới nước" />
               <span></span>
             </label>
           </div>
@@ -182,7 +183,7 @@
               <p id="fanControlStatus">Tắt</p>
             </div>
             <label class="switch">
-              <input id="fanToggle" type="checkbox" />
+              <input id="fanToggle" type="checkbox" aria-label="Bật/tắt quạt điều hòa" />
               <span></span>
             </label>
           </div>
@@ -317,22 +318,9 @@
         </div>
 
         <div class="camera-controls">
-          <div class="camera-url-field">
-            <select id="cameraProtocolSelect" aria-label="Giao thuc camera">
-              <option value="http://">http://</option>
-              <option value="https://">https://</option>
-            </select>
-            <input id="cameraUrlInput" type="text" inputmode="url" placeholder="192.168.1.12:81/stream" aria-label="IP camera" />
-          </div>
-          <button id="saveCameraUrlButton" type="button" class="primary-button">
-            <i class="fa-solid fa-check"></i>
-            <span>Áp dụng</span>
-          </button>
+          <p class="configuration-hint">Đổi URL luồng hình bằng nút bánh răng ở góc khối.</p>
           <button id="refreshCameraButton" type="button" class="icon-button" title="Làm mới camera" aria-label="Làm mới camera">
             <i class="fa-solid fa-rotate"></i>
-          </button>
-          <button id="clearCameraUrlButton" type="button" class="icon-button" title="Dùng mô phỏng" aria-label="Dùng mô phỏng">
-            <i class="fa-solid fa-rotate-left"></i>
           </button>
         </div>
         </div>
@@ -353,46 +341,9 @@
         </summary>
         <div class="panel__content">
 
-        <div class="mqtt-form">
-          <label>
-            <span>WebSocket</span>
-            <input id="mqttUrlInput" type="text" autocomplete="off" />
-          </label>
-          <label>
-            <span>Username</span>
-            <input id="mqttUsernameInput" type="text" autocomplete="off" />
-          </label>
-          <label>
-            <span>Password</span>
-            <input id="mqttPasswordInput" type="password" autocomplete="off" />
-          </label>
-          <label>
-            <span>Topic gốc</span>
-            <input id="mqttBaseTopicInput" type="text" autocomplete="off" />
-          </label>
-          <button id="saveMqttConfigButton" type="button" class="primary-button">
-            <i class="fa-solid fa-floppy-disk"></i>
-            <span>Lưu kết nối</span>
-          </button>
-        </div>
-
-        <div class="topic-map">
-          <span>V1 Nhiệt độ</span>
-          <span>V2 Ẩm KK</span>
-          <span>V3 Đất A</span>
-          <span>V4 Đất B</span>
-          <span>V5 Ánh sáng</span>
-          <span>V6 Đèn</span>
-          <span>V7 Bơm</span>
-          <span>V8 Quạt</span>
-          <span>V9 Chế độ</span>
-          <span>V11/V12 Ngưỡng bật đèn</span>
-          <span>V13 Ngưỡng tắt đèn</span>
-          <span>V14 Ngưỡng độ ẩm</span>
-          <span>V15 Thời gian tưới</span>
-          <span>V16 Ngưỡng bật quạt</span>
-          <span>V17 Ngưỡng tắt quạt</span>
-        </div>
+        <p id="connectionHint" class="configuration-hint"></p>
+        <button type="button" class="primary-button" data-settings="connection">Cấu hình kết nối</button>
+        <div id="topicMap" class="topic-map" aria-label="Ánh xạ topic hiện tại"></div>
         </div>
       </details>
 
@@ -428,6 +379,24 @@
       </details>
     </section>
   </main>
+
+  <div id="settingsNotice" class="settings-notice" role="status" aria-live="polite" hidden></div>
+
+  <dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsTitle" aria-describedby="settingsDescription">
+    <form id="settingsForm" novalidate>
+      <div class="settings-dialog__header">
+        <h2 id="settingsTitle">Cấu hình channel</h2>
+        <button id="closeSettings" type="button" class="icon-button" aria-label="Đóng cấu hình">×</button>
+      </div>
+      <p id="settingsDescription" class="configuration-hint">Chọn channel giống chương trình Scratch. Thay đổi chỉ có hiệu lực khi lưu.</p>
+      <p id="settingsError" class="settings-error" role="alert" hidden></p>
+      <div id="settingsFields" class="settings-fields"></div>
+      <div class="settings-dialog__actions">
+        <button id="cancelSettings" type="button" class="secondary-button">Hủy</button>
+        <button type="submit" class="primary-button">Lưu</button>
+      </div>
+    </form>
+  </dialog>
 
   <footer class="app-footer">
     <span>MEKONG STEM - MEKONG CẤT CÁNH, STEM DẪN ĐƯỜNG</span>

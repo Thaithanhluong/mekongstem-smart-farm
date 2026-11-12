@@ -1,62 +1,14 @@
 (() => {
   'use strict';
 
-  const STORAGE_KEY = 'mekongstem.smart-farm.dashboard.v1';
-
-  const CHANNELS = {
-    temperature: 'V1',
-    humidity: 'V2',
-    soilOne: 'V3',
-    soilTwo: 'V4',
-    lightSensor: 'V5',
-    light: 'V6',
-    pump: 'V7',
-    fan: 'V8',
-    mode: 'V9',
-    presence: 'V10',
-    irrigation: 'V18',
-    irrigationStatus: 'V19',
-    clock: 'V20',
-  };
-
-  const RULE_PARAMETER_CHANNELS = {
-    // V11 matches the Scratch receiver; V12 keeps compatibility with esp32_scratch_mqtt.py.
-    lightOn: ['V11', 'V12'],
-    lightOff: ['V13'],
-    soilDry: ['V14'],
-    pumpDuration: ['V15'],
-    fanOn: ['V16'],
-    fanOff: ['V17'],
-  };
-
-  const THRESHOLD_BY_CHANNEL = {
-    V11: 'lightOn',
-    V12: 'lightOn',
-    V13: 'lightOff',
-    V14: 'soilDry',
-    V15: 'pumpDuration',
-    V16: 'fanOn',
-    V17: 'fanOff',
-  };
-
-  const SENSOR_BY_CHANNEL = {
-    V1: 'temperature',
-    V2: 'humidity',
-    V3: 'soilOne',
-    V4: 'soilTwo',
-    V5: 'light',
-  };
-
-  const DEVICE_BY_CHANNEL = {
-    V6: 'light',
-    V7: 'pump',
-    V8: 'fan',
-  };
+  const STORAGE_KEY = 'mekongstem.smart-farm.dashboard.v2';
+  const LEGACY_STORAGE_KEY = 'mekongstem.smart-farm.dashboard.v1';
+  const Config = window.SmartFarmConfig;
+  const REGISTRY = Config.REGISTRY;
 
   const DEVICE_META = {
     light: {
       label: 'Đèn trồng cây',
-      channel: CHANNELS.light,
       toggleId: 'lightToggle',
       statusId: 'lightControlStatus',
       rowSelector: '[data-device="light"]',
@@ -64,7 +16,6 @@
     },
     pump: {
       label: 'Bơm tưới nước',
-      channel: CHANNELS.pump,
       toggleId: 'pumpToggle',
       statusId: 'pumpControlStatus',
       rowSelector: '[data-device="pump"]',
@@ -72,7 +23,6 @@
     },
     fan: {
       label: 'Quạt điều hòa',
-      channel: CHANNELS.fan,
       toggleId: 'fanToggle',
       statusId: 'fanControlStatus',
       rowSelector: '[data-device="fan"]',
@@ -81,12 +31,7 @@
   };
 
   const DEFAULT_STATE = {
-    config: {
-      url: 'wss://mqtt.ohstem.vn:8084/mqtt',
-      username: 'greenhouse_BNG',
-      password: '',
-      baseTopic: 'greenhouse_BNG/feeds',
-    },
+    config: Config.defaults(),
     sensors: {
       temperature: null,
       humidity: null,
@@ -117,7 +62,7 @@
       days: [0, 1, 2, 3, 4, 5, 6],
       slots: [{ time: '08:00', seconds: 5 }, { time: '17:00', seconds: 5 }],
     },
-    cameraUrl: 'http://192.168.1.4:81/stream',
+    cameraUrl: '',
     history: [],
     alerts: [],
     alertsByDate: {},
@@ -147,10 +92,20 @@
   const CAMERA_RETRY_DELAY_MS = 5000;
   const CAMERA_MAX_AUTO_RETRIES = 2;
 
+  let storageError = false;
   let state = loadState();
   let elements = {};
   let mqttClient = null;
   let mqttConnected = false;
+  let mqttGeneration = 0;
+  let mqttSubscribed = false;
+  let subscriptionVersion = 0;
+  let incomingRoutes = new Map();
+  let webPumpOn = false;
+  let settingsDraft = null;
+  let settingsTrigger = null;
+  let settingsGroup = null;
+  let noticeTimer = null;
   let smartFarmConnected = false;
   let smartFarmLastSeenAt = 0;
   let smartFarmSyncRequestedAt = 0;
@@ -173,6 +128,307 @@
   let espIrrigationConfig = null;
   let espClockReady = false;
 
+  const SENSOR_KEYS = Object.keys(REGISTRY).filter((key) => REGISTRY[key].sensor);
+  const THRESHOLD_KEYS = Object.keys(REGISTRY).filter((key) => REGISTRY[key].type === 'threshold');
+  const SETTINGS_GROUPS = {
+    sensors: { title: 'Cảm biến', keys: SENSOR_KEYS },
+    temperature: { title: 'Nhiệt độ', keys: ['temperature'] },
+    humidity: { title: 'Độ ẩm không khí', keys: ['humidity'] },
+    lightSensor: { title: 'Ánh sáng', keys: ['lightSensor'] },
+    soil: { title: 'Độ ẩm đất', keys: ['soilOne', 'soilTwo'] },
+    soilOne: { title: 'Đất khu A', keys: ['soilOne'] },
+    soilTwo: { title: 'Đất khu B', keys: ['soilTwo'] },
+    controls: { title: 'Điều khiển và chế độ', keys: ['mode', 'light', 'pump', 'fan'] },
+    light: { title: 'Đèn trồng cây', keys: ['light'] },
+    pump: { title: 'Bơm tưới nước', keys: ['pump'] },
+    fan: { title: 'Quạt điều hòa', keys: ['fan'] },
+    automation: { title: 'Luật vận hành', keys: THRESHOLD_KEYS },
+    ruleLight: { title: 'Luật bật/tắt đèn', keys: ['lightOn', 'lightOff'] },
+    rulePump: { title: 'Luật tưới nước', keys: ['soilDry', 'pumpDuration'] },
+    ruleFan: { title: 'Luật bật/tắt quạt', keys: ['fanOn', 'fanOff'] },
+    irrigation: { title: 'Tưới tự động trên ESP32', keys: ['irrigation', 'irrigationStatus', 'clock', 'mode', 'soilDry', 'pumpDuration'] },
+    camera: { title: 'Luồng camera', keys: [] },
+    connection: { title: 'Kết nối MQTT', keys: ['presence'] },
+  };
+
+  function initSettings() {
+    function gear(target, group, header = false) {
+      if (!target) return;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `icon-button settings-gear${header ? '' : ' settings-gear--corner'}`;
+      button.dataset.settings = group;
+      button.title = button.ariaLabel = `Cấu hình ${SETTINGS_GROUPS[group].title}`;
+      button.innerHTML = '<i class="fa-solid fa-gear" aria-hidden="true"></i>';
+      if (header) {
+        let actions = target.querySelector('.panel__header-actions');
+        if (!actions) {
+          actions = document.createElement('div');
+          actions.className = 'panel__header-actions';
+          const chevron = target.querySelector('.panel__chevron');
+          if (chevron) actions.append(chevron);
+          target.append(actions);
+        }
+        actions.insertBefore(button, actions.querySelector('.panel__chevron'));
+      } else {
+        target.classList.add('has-settings');
+        target.append(button);
+      }
+    }
+    const panels = { sensors: 'sensors', environment: 'sensors', controls: 'controls', automation: 'automation', irrigation: 'irrigation', camera: 'camera', iot: 'connection' };
+    Object.entries(panels).forEach(([panel, group]) => gear(document.querySelector(`.${panel}-panel > summary`), group, true));
+    const metrics = { temperature: 'temperature', humidity: 'humidity', light: 'lightSensor', soil: 'soil' };
+    Object.entries(metrics).forEach(([metric, group]) => gear(document.querySelector(`[data-metric="${metric}"]`), group));
+    ['light', 'pump', 'fan'].forEach((key) => gear(document.querySelector(`[data-device="${key}"]`), key));
+    ['soilOne', 'soilTwo'].forEach((key) => gear(document.getElementById(`${key}Value`)?.closest('.sensor-row'), key));
+    const toggles = [...document.querySelectorAll('.automation-toggle')];
+    toggles.forEach((toggle, index) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'automation-rule';
+      toggle.before(wrapper);
+      let node = toggle;
+      while (node && !wrapper.contains(node)) {
+        const next = node.nextElementSibling;
+        wrapper.append(node);
+        if (!next || next.classList.contains('automation-toggle')) break;
+        node = next;
+      }
+      gear(wrapper, ['ruleLight', 'rulePump', 'ruleFan'][index]);
+    });
+    const shortcut = document.createElement('button');
+    shortcut.type = 'button';
+    shortcut.className = 'icon-button';
+    shortcut.dataset.settings = 'connection';
+    shortcut.title = shortcut.ariaLabel = 'Cấu hình kết nối MQTT';
+    shortcut.innerHTML = '<i class="fa-solid fa-gear" aria-hidden="true"></i>';
+    document.querySelector('.header-status')?.prepend(shortcut);
+
+    document.addEventListener('click', (event) => {
+      const trigger = event.target.closest('[data-settings]');
+      if (!trigger) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openSettings(trigger.dataset.settings, trigger);
+    });
+    const dialog = document.getElementById('settingsDialog');
+    const close = () => dialog.close();
+    document.getElementById('closeSettings').addEventListener('click', close);
+    document.getElementById('cancelSettings').addEventListener('click', close);
+    dialog.addEventListener('close', () => {
+      settingsDraft = null;
+      document.body.classList.remove('settings-open');
+      settingsTrigger?.focus();
+    });
+    dialog.addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab') return;
+      const focusable = [...dialog.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]')]
+        .filter((element) => element.getClientRects().length);
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    });
+    document.getElementById('settingsForm').addEventListener('submit', saveSettings);
+    const fields = document.getElementById('settingsFields');
+    fields.addEventListener('input', updateSettingsDraft);
+    fields.addEventListener('change', updateSettingsDraft);
+    fields.addEventListener('click', (event) => {
+      const add = event.target.closest('[data-add-alias]');
+      const remove = event.target.closest('[data-remove-alias]');
+      if (add) {
+        settingsDraft.config.bindings[add.dataset.addAlias].aliases.push({ kind: 'channel', value: '' });
+        renderSettingsFields();
+        fields.querySelector(`[data-binding="${add.dataset.addAlias}"] .binding-ref:last-of-type input`)?.focus();
+      }
+      if (remove) {
+        settingsDraft.config.bindings[remove.dataset.removeAlias].aliases.splice(Number(remove.dataset.index), 1);
+        renderSettingsFields();
+        fields.querySelector(`[data-add-alias="${remove.dataset.removeAlias}"]`)?.focus();
+      }
+    });
+  }
+
+  function openSettings(group, trigger) {
+    settingsGroup = group;
+    settingsTrigger = trigger;
+    settingsDraft = { config: Config.clone(state.config), cameraUrl: state.cameraUrl };
+    document.getElementById('settingsTitle').textContent = `Cấu hình · ${SETTINGS_GROUPS[group].title}`;
+    document.getElementById('settingsError').hidden = true;
+    renderSettingsFields();
+    document.body.classList.add('settings-open');
+    document.getElementById('settingsDialog').showModal();
+  }
+
+  function settingsField(label, control, errorKey) {
+    const id = `settings-error-${errorKey.replace(/[^a-zA-Z0-9]/g, '-')}`;
+    return `<div class="settings-field"><label>${escapeHtml(label)}${control.replace(/<(input|select|textarea)\b/, `<$1 aria-describedby="${id}"`)}</label><small id="${id}" class="settings-field-error" data-error-for="${errorKey}"></small></div>`;
+  }
+
+  function renderSettingsFields() {
+    const config = settingsDraft.config;
+    const html = [];
+    if (settingsGroup === 'connection') {
+      html.push(settingsField('Loại kết nối', `<select data-config="provider"><option value="ohstem" ${config.provider === 'ohstem' ? 'selected' : ''}>OhStem · username/feeds/channel</option><option value="custom" ${config.provider === 'custom' ? 'selected' : ''}>MQTT tùy chỉnh</option></select>`, 'provider'));
+      [['url', 'URL WebSocket', 'url'], ['username', 'Username giống khối Scratch', 'text'], ['password', 'Mật khẩu MQTT', 'password'], ['baseTopic', 'Topic gốc', 'text']].forEach(([key, label, type]) => {
+        html.push(settingsField(label, `<input type="${type}" data-config="${key}" value="${escapeHtml(key === 'baseTopic' ? Config.baseTopic(config) : config[key])}" ${key === 'baseTopic' && config.provider === 'ohstem' ? 'readonly' : ''} autocomplete="off">`, key));
+      });
+      html.push('<p class="configuration-hint">ESP32 dùng cổng TCP 1883; trình duyệt cần URL WebSocket. Username phải khớp khối kết nối trên bo mạch. Mật khẩu ở đây là MQTT, không phải mật khẩu WiFi.</p>');
+    }
+    if (settingsGroup === 'connection' || settingsGroup === 'irrigation') {
+      const features = settingsGroup === 'irrigation' ? ['irrigation'] : ['heartbeat', 'sync', 'irrigation'];
+      const labels = { heartbeat: 'Chương trình có phản hồi ARE U HERE / HERE', sync: 'Chương trình có xử lý SYNC_REQUEST', irrigation: 'Chương trình có cấu hình tưới, phản hồi và đồng bộ giờ' };
+      html.push('<fieldset class="settings-features"><legend>Tính năng chương trình Scratch hỗ trợ</legend>');
+      features.forEach((key) => html.push(`<label><input type="checkbox" data-feature="${key}" ${config.features[key] ? 'checked' : ''}> ${labels[key]}</label>`));
+      html.push('</fieldset>');
+    }
+    if (settingsGroup === 'camera') {
+      html.push(settingsField('URL luồng camera (để trống để dùng mô phỏng)', `<input type="url" data-camera value="${escapeHtml(settingsDraft.cameraUrl)}" placeholder="http://địa-chỉ-camera:81/stream" autocomplete="off">`, 'cameraUrl'));
+    }
+    SETTINGS_GROUPS[settingsGroup].keys.forEach((key) => {
+      const meta = REGISTRY[key];
+      const binding = config.bindings[key];
+      const direction = { rx: 'Nhận', tx: 'Gửi', both: 'Gửi / nhận' }[meta.direction];
+      html.push(`<fieldset class="binding-editor" data-binding="${key}"><legend>${escapeHtml(meta.label)} <span>${direction}</span></legend>`);
+      [binding, ...binding.aliases].forEach((ref, index) => {
+        html.push(`<div class="binding-ref" data-ref="${key}" data-index="${index}">`);
+        html.push(settingsField(index ? 'Loại kênh phụ' : 'Loại địa chỉ', `<select data-ref-kind><option value="channel" ${ref.kind === 'channel' ? 'selected' : ''}>Channel theo topic gốc</option><option value="topic" ${ref.kind === 'topic' ? 'selected' : ''}>Topic đầy đủ</option></select>`, `kind.${key}.${index}`));
+        html.push(settingsField(index ? 'Kênh phụ tương thích' : 'Channel / topic', `<input type="text" data-ref-value value="${escapeHtml(ref.value)}" autocomplete="off" spellcheck="false">`, `bindings.${key}.${index}`));
+        if (index) html.push(`<button type="button" class="secondary-button" data-remove-alias="${key}" data-index="${index - 1}" aria-label="Xóa kênh phụ ${escapeHtml(meta.label)}">Xóa kênh phụ</button>`);
+        html.push(`<p class="topic-preview" data-preview="${key}" data-index="${index}"></p></div>`);
+      });
+      if (meta.type === 'threshold') html.push(`<button type="button" class="settings-add-alias" data-add-alias="${key}">+ Thêm kênh phụ tương thích</button>`);
+      if (meta.type === 'device') {
+        html.push('<div class="payload-fields">');
+        html.push(settingsField('Lệnh bật', `<input type="text" data-payload="${key}" data-command="on" value="${escapeHtml(binding.on)}" autocomplete="off">`, `payload.${key}`));
+        html.push(settingsField('Lệnh tắt', `<input type="text" data-payload="${key}" data-command="off" value="${escapeHtml(binding.off)}" autocomplete="off">`, `off.${key}`));
+        html.push('</div><p class="configuration-hint">Điền đúng chuỗi trong khối “nếu thông tin nhận được là…”.</p>');
+      }
+      html.push('</fieldset>');
+    });
+    document.getElementById('settingsFields').innerHTML = html.join('');
+    renderTopicPreviews();
+  }
+
+  function updateSettingsDraft(event) {
+    const input = event.target;
+    const config = settingsDraft.config;
+    if (input.dataset.config) {
+      config[input.dataset.config] = input.value;
+      if (config.provider === 'ohstem') config.baseTopic = Config.baseTopic(config);
+      if (input.dataset.config === 'provider') {
+        renderSettingsFields();
+        document.querySelector('[data-config="provider"]')?.focus();
+      } else if (config.provider === 'ohstem') document.querySelector('[data-config="baseTopic"]').value = Config.baseTopic(config);
+    }
+    if (input.dataset.feature) config.features[input.dataset.feature] = input.checked;
+    if (input.hasAttribute('data-camera')) settingsDraft.cameraUrl = input.value;
+    const row = input.closest('[data-ref]');
+    if (row) {
+      const binding = config.bindings[row.dataset.ref];
+      const index = Number(row.dataset.index);
+      const ref = index ? binding.aliases[index - 1] : binding;
+      if (input.hasAttribute('data-ref-kind')) ref.kind = input.value;
+      if (input.hasAttribute('data-ref-value')) ref.value = input.value;
+    }
+    if (input.dataset.payload) config.bindings[input.dataset.payload][input.dataset.command] = input.value;
+    renderTopicPreviews();
+  }
+
+  function renderTopicPreviews() {
+    document.querySelectorAll('[data-preview]').forEach((element) => {
+      const binding = settingsDraft.config.bindings[element.dataset.preview];
+      const index = Number(element.dataset.index);
+      const ref = index ? binding.aliases[index - 1] : binding;
+      element.textContent = `Topic thực tế: ${Config.resolve(settingsDraft.config, ref) || '—'}${ref.kind === 'channel' && settingsDraft.config.provider === 'ohstem' && !settingsDraft.config.username ? ' (nhập username trong Kết nối)' : ''}`;
+    });
+  }
+
+  function showSettingsErrors(errors) {
+    document.querySelectorAll('[data-error-for]').forEach((element) => { element.textContent = errors[element.dataset.errorFor] || ''; });
+    document.querySelectorAll('#settingsFields [aria-describedby]').forEach((input) => {
+      input.setAttribute('aria-invalid', String(Boolean(document.getElementById(input.getAttribute('aria-describedby'))?.textContent)));
+    });
+    const summary = document.getElementById('settingsError');
+    summary.hidden = !Object.keys(errors).length;
+    summary.textContent = Object.values(errors)[0] || '';
+    document.querySelector('#settingsFields [aria-invalid="true"]')?.focus();
+  }
+
+  function saveSettings(event) {
+    event.preventDefault();
+    const draft = settingsDraft;
+    const config = Config.normalize(draft.config);
+    if (settingsGroup === 'connection') config.configured = true;
+    const errors = settingsGroup === 'camera' ? {} : Config.validate(config);
+    const cameraUrl = draft.cameraUrl.trim();
+    if (settingsGroup === 'camera' && cameraUrl) {
+      try {
+        const url = new URL(cameraUrl);
+        if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) throw new Error();
+        if (location.protocol === 'https:' && url.protocol === 'http:') errors.cameraUrl = 'Trang HTTPS cần URL camera HTTPS hoặc mở dashboard qua HTTP trong mạng nội bộ.';
+      } catch { errors.cameraUrl = 'Nhập URL camera http:// hoặc https:// hợp lệ.'; }
+    }
+    const mqttChanged = JSON.stringify(config) !== JSON.stringify(state.config);
+    if (mqttChanged && (webPumpOn || autoPumpStarted)) errors.connection = 'Tắt bơm qua cấu hình hiện tại trước khi đổi kết nối hoặc channel.';
+    if (Object.keys(errors).length) { showSettingsErrors(errors); return; }
+    const candidate = { ...state, config, cameraUrl };
+    if (mqttChanged) {
+      candidate.sensors = Config.clone(DEFAULT_STATE.sensors);
+      candidate.history = [];
+      candidate.controls = { ...state.controls, iotMode: false, light: false, pump: false, fan: false, autoLight: false, autoPump: false, autoFan: false };
+    }
+    if (!persistState(candidate)) {
+      showSettingsErrors({ storage: 'Không lưu được cấu hình. Kiểm tra bộ nhớ trình duyệt rồi thử lại.' });
+      return;
+    }
+    if (mqttChanged) {
+      disconnectMqtt();
+      window.clearTimeout(autoPumpTimer);
+      autoPumpTimer = null;
+      autoPumpStarted = false;
+      lastPumpCycleAt = 0;
+      alertThrottle.clear();
+    }
+    const cameraChanged = state.cameraUrl !== candidate.cameraUrl;
+    state = candidate;
+    renderAll();
+    renderConfiguration();
+    if (cameraChanged) renderCamera({ forceReload: true });
+    if (mqttChanged) connectMqtt();
+    document.getElementById('settingsDialog').close();
+    notifySettings('Đã lưu cấu hình trên trình duyệt này.');
+  }
+
+  function renderConfiguration() {
+    const configured = state.config.configured;
+    document.getElementById('connectionHint').textContent = configured
+      ? `${state.config.url} · ${Config.baseTopic(state.config) || 'Topic đầy đủ'}`
+      : 'Chọn bánh răng, nhập username giống khối kết nối OhStem và lưu để bắt đầu.';
+    const map = document.getElementById('topicMap');
+    map.replaceChildren();
+    Object.entries(REGISTRY).forEach(([key, meta]) => {
+      if (!Config.active(state.config, key)) return;
+      const item = document.createElement('span');
+      item.textContent = `${meta.label}: ${Config.topics(state.config, key).join(', ')}`;
+      map.append(item);
+    });
+    document.querySelectorAll('.controls-panel input, .controls-panel [data-mode], .automation-list input').forEach((input) => { input.disabled = !configured; });
+    const irrigationEnabled = configured && state.config.features.irrigation;
+    document.querySelectorAll('#irrigationForm input, #irrigationForm button').forEach((input) => { input.disabled = !irrigationEnabled; });
+    if (irrigationEnabled) renderIrrigation();
+    else irrigationStatus('Chưa bật hỗ trợ tưới trên ESP32. Cấu hình bằng bánh răng của khối.');
+    renderEspIrrigationMode();
+  }
+
+  function notifySettings(message, error = false) {
+    const element = document.getElementById('settingsNotice');
+    if (!element) return;
+    element.hidden = false;
+    element.classList.toggle('is-error', error);
+    element.textContent = message;
+    window.clearTimeout(noticeTimer);
+    if (!error) noticeTimer = window.setTimeout(() => { element.hidden = true; }, 6000);
+  }
+
   document.addEventListener('DOMContentLoaded', init);
 
   function init() {
@@ -180,9 +436,12 @@
     hydrateInputs();
     bindEvents();
     bindIrrigation();
+    initSettings();
     renderAll();
+    renderConfiguration();
     updateClock();
     connectMqtt();
+    if (storageError) notifySettings('Không đọc được cấu hình đã lưu. Kiểm tra bộ nhớ trình duyệt.', true);
 
     window.setInterval(updateClock, 1000);
     window.setInterval(() => runFrontendAutomation('timer'), 4000);
@@ -242,16 +501,7 @@
       'cameraPlaceholder',
       'cameraStatus',
       'cameraTimestamp',
-      'cameraProtocolSelect',
-      'cameraUrlInput',
-      'saveCameraUrlButton',
       'refreshCameraButton',
-      'clearCameraUrlButton',
-      'mqttUrlInput',
-      'mqttUsernameInput',
-      'mqttPasswordInput',
-      'mqttBaseTopicInput',
-      'saveMqttConfigButton',
       'reconnectMqttButton',
       'alertsList',
       'clearAlertsButton',
@@ -268,10 +518,6 @@
   }
 
   function hydrateInputs() {
-    setInputValue('mqttUrlInput', state.config.url);
-    setInputValue('mqttUsernameInput', state.config.username);
-    setInputValue('mqttPasswordInput', state.config.password);
-    setInputValue('mqttBaseTopicInput', state.config.baseTopic);
 
     setInputValue('lightOnThreshold', state.thresholds.lightOn);
     setInputValue('lightOffThreshold', state.thresholds.lightOff);
@@ -286,7 +532,6 @@
     setChecked('lightToggle', state.controls.light);
     setChecked('pumpToggle', state.controls.pump);
     setChecked('fanToggle', state.controls.fan);
-    syncCameraUrlInputs();
   }
 
   function bindEvents() {
@@ -321,38 +566,11 @@
     bindThreshold('fanOnThreshold', 'fanOn');
     bindThreshold('fanOffThreshold', 'fanOff');
 
-    elements.saveCameraUrlButton?.addEventListener('click', () => {
-      state.cameraUrl = buildCameraUrl(elements.cameraProtocolSelect?.value, elements.cameraUrlInput?.value);
-      syncCameraUrlInputs();
-      saveState();
-      renderCamera({ forceReload: true });
-      addAlert('Camera', state.cameraUrl ? 'Đã cập nhật luồng camera từ xa.' : 'Đang dùng khung mô phỏng camera.', 'info', 'fa-video');
-    });
-
     elements.refreshCameraButton?.addEventListener('click', () => {
       refreshCameraStream({ notify: true });
     });
 
-    elements.clearCameraUrlButton?.addEventListener('click', () => {
-      state.cameraUrl = '';
-      syncCameraUrlInputs();
-      saveState();
-      renderCamera();
-    });
-
     attachCameraStreamEvents();
-
-    elements.saveMqttConfigButton?.addEventListener('click', () => {
-      state.config = {
-        url: String(elements.mqttUrlInput?.value || DEFAULT_STATE.config.url).trim(),
-        username: String(elements.mqttUsernameInput?.value || '').trim(),
-        password: String(elements.mqttPasswordInput?.value || ''),
-        baseTopic: normalizeBaseTopic(elements.mqttBaseTopicInput?.value || ''),
-      };
-      saveState();
-      reconnectMqtt();
-    });
-
     elements.reconnectMqttButton?.addEventListener('click', reconnectMqtt);
     elements.clearAlertsButton?.addEventListener('click', () => {
       const dateKey = getSelectedAlertDateKey();
@@ -381,48 +599,6 @@
     elements.simulateDataButton?.addEventListener('click', simulateSensorData);
   }
 
-  function syncCameraUrlInputs(url = state.cameraUrl) {
-    const parts = splitCameraUrl(url);
-    setInputValue('cameraProtocolSelect', parts.protocol);
-    setInputValue('cameraUrlInput', parts.address);
-  }
-
-  function buildCameraUrl(protocol, value) {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-
-    const pastedUrl = splitCameraUrl(raw);
-    if (pastedUrl.hasProtocol) {
-      return pastedUrl.address ? `${pastedUrl.protocol}${pastedUrl.address}` : '';
-    }
-
-    const address = raw.replace(/^\/+/, '');
-    return address ? `${normalizeCameraProtocol(protocol)}${address}` : '';
-  }
-
-  function splitCameraUrl(value) {
-    const raw = String(value || '').trim();
-    const match = raw.match(/^(https?:\/\/)(.*)$/i);
-
-    if (match) {
-      return {
-        protocol: normalizeCameraProtocol(match[1]),
-        address: match[2].replace(/^\/+/, ''),
-        hasProtocol: true,
-      };
-    }
-
-    return {
-      protocol: 'http://',
-      address: raw.replace(/^\/+/, ''),
-      hasProtocol: false,
-    };
-  }
-
-  function normalizeCameraProtocol(protocol) {
-    return String(protocol || '').toLowerCase() === 'https://' ? 'https://' : 'http://';
-  }
-
   function bindThreshold(inputId, key) {
     const input = elements[inputId];
     if (!input) return;
@@ -431,7 +607,7 @@
       state.thresholds[key] = normalizeThreshold(key, input.value);
       syncThresholdBounds(state.thresholds);
       renderThresholdLabels();
-      publishRuleParameters();
+      publishRuleParameters(key);
     });
 
     input.addEventListener('change', () => {
@@ -439,7 +615,7 @@
       syncThresholdBounds(state.thresholds);
       hydrateThresholdInputs();
       saveState();
-      publishRuleParameters();
+      publishRuleParameters(key);
       renderSensorCards();
       runFrontendAutomation('threshold');
     });
@@ -447,6 +623,10 @@
 
   function connectMqtt() {
     if (mqttClient || mqttConnected) return;
+    if (!state.config.configured || Object.keys(Config.validate(state.config)).length) {
+      setMqttStatus('Chưa cấu hình kết nối', 'warning');
+      return;
+    }
 
     if (typeof mqtt === 'undefined') {
       setMqttStatus('Thiếu thư viện MQTT', 'error');
@@ -455,6 +635,7 @@
 
     setMqttStatus('Đang kết nối MQTT', 'connecting');
 
+    const generation = ++mqttGeneration;
     try {
       mqttClient = mqtt.connect(state.config.url, {
         clientId: `mekongstem_farm_${Math.random().toString(16).slice(2, 10)}`,
@@ -471,26 +652,34 @@
       return;
     }
 
-    mqttClient.on('connect', () => {
+    const client = mqttClient;
+    const current = () => generation === mqttGeneration && mqttClient === client;
+    client.on('connect', () => {
+      if (!current()) return;
       mqttConnected = true;
+      mqttSubscribed = false;
       smartFarmConnected = false;
       smartFarmLastSeenAt = 0;
-      setMqttStatus('MQTT OK - kiểm tra Smart Farm', 'warning');
       subscribeMqttTopics();
-      flushPendingMessages();
     });
 
-    mqttClient.on('reconnect', () => {
+    client.on('reconnect', () => {
+      if (!current()) return;
+      ++subscriptionVersion;
       invalidateEspModeConfirmation();
       mqttConnected = false;
+      mqttSubscribed = false;
       smartFarmConnected = false;
       stopSmartFarmHeartbeat();
       setMqttStatus('Đang kết nối lại', 'connecting');
     });
 
-    mqttClient.on('close', () => {
+    client.on('close', () => {
+      if (!current()) return;
+      ++subscriptionVersion;
       invalidateEspModeConfirmation();
       mqttConnected = false;
+      mqttSubscribed = false;
       smartFarmConnected = false;
       stopSmartFarmHeartbeat();
       if (mqttClient) {
@@ -498,87 +687,111 @@
       }
     });
 
-    mqttClient.on('error', (error) => {
+    client.on('error', (error) => {
+      if (!current()) return;
       setMqttStatus('Lỗi MQTT', 'error');
       addAlertThrottled('mqtt-error', 'MQTT', error.message || 'Broker trả về lỗi kết nối.', 'danger', 'fa-plug-circle-xmark', 60_000);
     });
 
-    mqttClient.on('message', handleMqttMessage);
+    client.on('message', (topic, payload) => {
+      if (current() && mqttConnected) handleMqttMessage(topic, payload);
+    });
   }
 
   function reconnectMqtt() {
-    if (mqttClient) {
-      const client = mqttClient;
-      mqttClient = null;
-      mqttConnected = false;
-      smartFarmConnected = false;
-      stopSmartFarmHeartbeat();
-      client.end(true);
-    }
+    const stopPending = webPumpOn && pendingMessages.some((item) => item.channel === 'pump' && item.message === state.config.bindings.pump.off);
+    disconnectMqtt();
+    connectMqtt();
+    // A manual retry uses the same routes; retain only an explicit pending stop.
+    if (stopPending && mqttClient) publishChannel('pump', state.config.bindings.pump.off);
+  }
 
-    window.setTimeout(connectMqtt, 120);
+  function disconnectMqtt() {
+    ++mqttGeneration;
+    ++subscriptionVersion;
+    const client = mqttClient;
+    mqttClient = null;
+    mqttConnected = false;
+    mqttSubscribed = false;
+    incomingRoutes.clear();
+    pendingMessages = [];
+    smartFarmConnected = false;
+    smartFarmLastSeenAt = 0;
+    smartFarmSyncRequestedAt = 0;
+    stopSmartFarmHeartbeat();
+    window.clearTimeout(irrigationAckTimer);
+    window.clearTimeout(espActivationTimer);
+    irrigationPending = null;
+    espActivationState = 'idle';
+    espConfirmedManualMode = null;
+    espIrrigationConfig = null;
+    espClockReady = false;
+    irrigationDirty = false;
+    irrigationStatus('Chưa nhận cấu hình từ ESP32 trên kết nối này.');
+    renderEspIrrigationMode();
+    client?.end(true);
   }
 
   function subscribeMqttTopics() {
     if (!mqttClient || !mqttConnected) return;
 
-    const topics = new Set();
-    Object.values(CHANNELS).forEach((channel) => {
-      topicCandidates(channel).forEach((topic) => topics.add(topic));
-    });
-    Object.values(RULE_PARAMETER_CHANNELS).flat().forEach((channel) => {
-      topicCandidates(channel).forEach((topic) => topics.add(topic));
-    });
-
-    mqttClient.subscribe(Array.from(topics), { qos: 0 }, (error) => {
-      if (error) {
+    incomingRoutes = Config.routes(state.config, true);
+    const client = mqttClient;
+    const generation = mqttGeneration;
+    const subscription = ++subscriptionVersion;
+    client.subscribe(Array.from(incomingRoutes.keys()), { qos: 0 }, (error, granted) => {
+      if (client !== mqttClient || generation !== mqttGeneration || subscription !== subscriptionVersion || !mqttConnected) return;
+      if (error || granted?.some((item) => item.qos === 128)) {
         setMqttStatus('Lỗi nghe topic', 'error');
-        addAlert('MQTT', error.message || 'Không thể subscribe topic.', 'danger', 'fa-triangle-exclamation');
+        addAlert('MQTT', error?.message || 'Broker từ chối subscribe topic.', 'danger', 'fa-triangle-exclamation');
         return;
       }
 
+      mqttSubscribed = true;
       updateMqttDetail();
-      publishChannel(CHANNELS.clock, Math.floor(Date.now() / 1000));
-      setMqttStatus('MQTT OK - chờ Smart Farm', 'warning');
-      startSmartFarmHeartbeat();
-      if (Date.now() - smartFarmSyncRequestedAt > SMART_FARM_SYNC_GUARD_MS) {
-        sendSmartFarmSyncRequest();
-      }
+      setMqttStatus(state.config.features.heartbeat ? 'MQTT OK - chờ Smart Farm' : 'MQTT đã kết nối', state.config.features.heartbeat ? 'warning' : 'online');
+      if (state.config.features.irrigation) publishChannel('clock', Math.floor(Date.now() / 1000));
+      if (state.config.features.heartbeat) startSmartFarmHeartbeat();
+      if (state.config.features.sync) sendSmartFarmSyncRequest();
+      flushPendingMessages();
       addAlertThrottled('mqtt-online', 'MQTT', 'Đã sẵn sàng nhận dữ liệu Smart Farm.', 'info', 'fa-wifi', 30_000);
     });
   }
 
   function handleMqttMessage(topic, payload) {
     const message = payload.toString().trim();
-    const channel = extractChannel(topic);
+    const channel = incomingRoutes.get(String(topic));
+    if (!channel) return;
+    const meta = REGISTRY[channel];
 
-    if (channel === CHANNELS.irrigationStatus) {
+    if (channel === 'irrigationStatus') {
       handleIrrigationStatus(message);
       return;
     }
 
-    if (channel === CHANNELS.presence) {
+    if (channel === 'presence') {
       handleSmartFarmPresence(message);
       return;
     }
 
-    if (SENSOR_BY_CHANNEL[channel]) {
+    if (meta.sensor) {
+      const value = parseNumericValue(message);
+      if (!Number.isFinite(value)) return;
       markSmartFarmOnline();
-      updateSensor(SENSOR_BY_CHANNEL[channel], parseNumericValue(message), { source: 'mqtt' });
+      updateSensor(meta.sensor, value, { source: 'mqtt' });
       return;
     }
 
-    if (DEVICE_BY_CHANNEL[channel]) {
-      markSmartFarmOnline();
-      const stateValue = parseBinary(message);
+    if (meta.type === 'device') {
+      const stateValue = Config.parseDevice(state.config, channel, message);
       if (stateValue !== null) {
-        setDevice(DEVICE_BY_CHANNEL[channel], stateValue, { source: 'mqtt', publish: false });
+        // A broker echo is not confirmation that the board executed a command.
+        setDevice(channel, stateValue, { source: 'mqtt', publish: false });
       }
       return;
     }
 
-    if (channel === CHANNELS.mode) {
-      markSmartFarmOnline();
+    if (channel === 'mode') {
       const iotMode = parseBinary(message);
       if (iotMode !== null) {
         state.controls.iotMode = iotMode;
@@ -588,34 +801,40 @@
       return;
     }
 
-    if (THRESHOLD_BY_CHANNEL[channel]) {
-      markSmartFarmOnline();
-      updateThresholdFromMqtt(THRESHOLD_BY_CHANNEL[channel], message);
+    if (meta.type === 'threshold') {
+      updateThresholdFromMqtt(channel, message);
     }
   }
 
   function publishChannel(channel, payload) {
-    const topic = mqttTopic(channel);
+    if (!state.config.configured || !REGISTRY[channel] || !Config.active(state.config, channel)) return;
     const message = String(payload);
 
-    if (!mqttClient || !mqttConnected) {
+    if (!mqttClient || !mqttConnected || !mqttSubscribed) {
       pendingMessages = pendingMessages.filter((item) => item.channel !== channel);
-      pendingMessages.push({ channel, topic, message });
+      pendingMessages.push({ channel, message, generation: mqttGeneration });
       setMqttStatus('Đợi MQTT để gửi lệnh', 'connecting');
       return;
     }
 
-    mqttClient.publish(topic, message, { qos: 0, retain: false }, (error) => {
-      if (error) {
-        addAlert('MQTT', `Không gửi được ${channel}: ${error.message}`, 'danger', 'fa-triangle-exclamation');
-      }
+    const client = mqttClient;
+    const generation = mqttGeneration;
+    Config.topics(state.config, channel).forEach((topic) => {
+      client.publish(topic, message, { qos: 0, retain: false }, (error) => {
+        if (client !== mqttClient || generation !== mqttGeneration) return;
+        if (error) {
+          addAlert('MQTT', `Không gửi được ${topic}: ${error.message}`, 'danger', 'fa-triangle-exclamation');
+        } else if (channel === 'pump' && message === state.config.bindings.pump.off) {
+          webPumpOn = false;
+        }
+      });
     });
   }
 
   function flushPendingMessages() {
     const messages = pendingMessages.slice();
     pendingMessages = [];
-    messages.forEach((item) => publishChannel(item.channel, item.message));
+    messages.filter((item) => item.generation === mqttGeneration).forEach((item) => publishChannel(item.channel, item.message));
   }
 
   function irrigationStatus(text) {
@@ -712,6 +931,7 @@
     });
     document.getElementById('irrigationForm').addEventListener('submit', (event) => {
       event.preventDefault();
+      if (!state.config.features.irrigation) return;
       const config = state.irrigation;
       const times = config.slots.map((slot) => slot.time);
       if (!config.days.length) { irrigationStatus('Chọn ít nhất một ngày tưới.'); return; }
@@ -725,8 +945,8 @@
       irrigationPending = JSON.stringify(config);
       saveState();
       irrigationStatus(mqttConnected ? 'Đang gửi, chờ ESP32 xác nhận…' : 'Đang chờ kết nối MQTT để gửi cấu hình…');
-      publishChannel(CHANNELS.irrigation, irrigationPending);
-      publishChannel(CHANNELS.clock, Math.floor(Date.now() / 1000));
+      publishChannel('irrigation', irrigationPending);
+      publishChannel('clock', Math.floor(Date.now() / 1000));
       window.clearTimeout(irrigationAckTimer);
       irrigationAckTimer = window.setTimeout(() => {
         if (irrigationPending) irrigationStatus('Chưa có xác nhận từ ESP32. Kiểm tra kết nối và nạp chương trình ESP32 mới, rồi lưu lại.');
@@ -738,7 +958,7 @@
     try {
       const status = JSON.parse(message);
       const config = status.config;
-      if (!config || !['moisture', 'schedule'].includes(config.mode) || !Array.isArray(config.days) || !Array.isArray(config.slots)) return;
+      if (!Config.validIrrigation(config)) return;
       if (typeof status.manual_mode === 'boolean') {
         espConfirmedManualMode = status.manual_mode;
         espIrrigationConfig = config;
@@ -783,6 +1003,15 @@
   function renderEspIrrigationMode() {
     const button = document.getElementById('activateEspIrrigation');
     const status = document.getElementById('espIrrigationModeStatus');
+    if (!state.config.features.irrigation) {
+      button.disabled = true;
+      button.textContent = 'Bật ESP tự động';
+      button.classList.remove('is-confirmed');
+      button.setAttribute('aria-busy', 'false');
+      status.dataset.state = 'idle';
+      status.textContent = 'Bật hỗ trợ lịch tưới trong cài đặt khi Scratch có xử lý cấu hình, phản hồi và đồng bộ giờ.';
+      return;
+    }
     const pending = espActivationState === 'pending';
     const active = espConfirmedManualMode === false && !pending;
     button.disabled = pending || active;
@@ -808,15 +1037,15 @@
     renderEspIrrigationMode();
   }
 
-  function publishRuleParameters() {
-    Object.entries(RULE_PARAMETER_CHANNELS).forEach(([key, channels]) => {
-      const value = normalizeThreshold(key, state.thresholds[key]);
-      channels.forEach((channel) => publishChannel(channel, value));
-    });
+  function publishRuleParameters(key) {
+    if (REGISTRY[key]?.type !== 'threshold') return;
+    publishChannel(key, normalizeThreshold(key, state.thresholds[key]));
   }
 
   function updateThresholdFromMqtt(key, value) {
-    state.thresholds[key] = normalizeThreshold(key, value);
+    const number = parseNumericValue(value);
+    if (!Number.isFinite(number)) return;
+    state.thresholds[key] = normalizeThreshold(key, number);
     syncThresholdBounds(state.thresholds);
     hydrateThresholdInputs();
     saveState();
@@ -826,6 +1055,7 @@
   }
 
   function sendSmartFarmSyncRequest() {
+    if (!state.config.features.sync) return;
     smartFarmSyncRequestedAt = Date.now();
     publishPresenceMessage(SMART_FARM_SYNC_REQUEST);
   }
@@ -843,7 +1073,7 @@
   }
 
   function sendSmartFarmHeartbeat() {
-    if (!mqttClient || !mqttConnected) return;
+    if (!mqttClient || !mqttConnected || !state.config.features.heartbeat) return;
 
     checkSmartFarmTimeout();
     if (!smartFarmConnected) {
@@ -854,6 +1084,7 @@
   }
 
   function checkMqttConnectionHealth() {
+    if (!state.config.configured) return;
     const clientIsConnected = Boolean(mqttClient?.connected);
     const clientIsReconnecting = Boolean(mqttClient?.reconnecting);
 
@@ -867,6 +1098,7 @@
 
     if (!clientIsConnected) {
       mqttConnected = false;
+      mqttSubscribed = false;
       smartFarmConnected = false;
       stopSmartFarmHeartbeat();
       setMqttStatus(clientIsReconnecting ? 'Đang kết nối lại' : 'MQTT ngắt kết nối', clientIsReconnecting ? 'connecting' : 'error');
@@ -878,6 +1110,11 @@
       subscribeMqttTopics();
     }
 
+    if (!mqttSubscribed) return;
+    if (!state.config.features.heartbeat) {
+      setMqttStatus('MQTT đã kết nối', 'online');
+      return;
+    }
     checkSmartFarmTimeout();
 
     if (!smartFarmConnected) {
@@ -886,15 +1123,8 @@
   }
 
   function publishPresenceMessage(payload) {
-    if (!mqttClient || !mqttConnected) return;
-
-    Array.from(new Set(topicCandidates(CHANNELS.presence))).forEach((topic) => {
-      mqttClient.publish(topic, payload, { qos: 0, retain: false }, (error) => {
-        if (error) {
-          addAlertThrottled('smart-farm-ping-error', 'Smart Farm', `Không gửi được V10: ${error.message}`, 'warning', 'fa-triangle-exclamation', 60_000);
-        }
-      });
-    });
+    if (!mqttClient || !mqttConnected || !mqttSubscribed) return;
+    publishChannel('presence', payload);
   }
 
   function handleSmartFarmPresence(message) {
@@ -914,10 +1144,10 @@
     const wasConnected = smartFarmConnected;
     smartFarmConnected = true;
     smartFarmLastSeenAt = Date.now();
-    setMqttStatus('Đã kết nối Smart Farm', 'online');
+    setMqttStatus(state.config.features.heartbeat ? 'Đã kết nối Smart Farm' : 'MQTT đã kết nối', 'online');
 
     if (!wasConnected) {
-      addAlertThrottled('smart-farm-online', 'Smart Farm', 'ESP32/Scratch đã phản hồi HERE qua V10.', 'info', 'fa-wifi', 30_000);
+      addAlertThrottled('smart-farm-online', 'Smart Farm', 'Đã nhận dữ liệu từ nguồn đã cấu hình.', 'info', 'fa-wifi', 30_000);
       if (Date.now() - smartFarmSyncRequestedAt > SMART_FARM_SYNC_GUARD_MS) {
         sendSmartFarmSyncRequest();
       }
@@ -925,12 +1155,12 @@
   }
 
   function checkSmartFarmTimeout() {
-    if (!mqttConnected || !smartFarmLastSeenAt) return;
+    if (!state.config.features.heartbeat || !mqttConnected || !smartFarmLastSeenAt) return;
 
     if (Date.now() - smartFarmLastSeenAt <= SMART_FARM_TIMEOUT_MS) return;
 
     if (smartFarmConnected) {
-      addAlertThrottled('smart-farm-offline', 'Smart Farm', 'Không nhận phản hồi HERE từ V10.', 'warning', 'fa-plug-circle-xmark', 60_000);
+      addAlertThrottled('smart-farm-offline', 'Smart Farm', `Không nhận phản hồi từ ${Config.topics(state.config, 'presence').join(', ')} hoặc dữ liệu cảm biến.`, 'warning', 'fa-plug-circle-xmark', 60_000);
     }
 
     smartFarmConnected = false;
@@ -954,13 +1184,14 @@
 
   function updateMqttDetail(label = '') {
     if (!elements.mqttDetail) return;
-    const base = normalizeBaseTopic(state.config.baseTopic) || '(raw V1-V10)';
+    const base = Config.baseTopic(state.config) || '(topic đầy đủ)';
     const prefix = label ? `${label} - ` : '';
-    const farmSeen = smartFarmLastSeenAt ? ` - HERE lúc ${formatTime(smartFarmLastSeenAt)}` : '';
+    const farmSeen = smartFarmLastSeenAt ? ` - Nhận dữ liệu lúc ${formatTime(smartFarmLastSeenAt)}` : '';
     elements.mqttDetail.textContent = `${prefix}${state.config.username || 'anonymous'} @ ${base}${farmSeen}`;
   }
 
   function setIotMode(isIotMode, options = {}) {
+    if (options.publish !== false && !state.config.configured) return;
     const next = Boolean(isIotMode);
     const changed = state.controls.iotMode !== next;
     state.controls.iotMode = next;
@@ -970,16 +1201,16 @@
     if (options.publish !== false) {
       espConfirmedManualMode = null;
       window.clearTimeout(espActivationTimer);
-      espActivationState = next ? 'idle' : 'pending';
+      espActivationState = next || !state.config.features.irrigation ? 'idle' : 'pending';
       renderEspIrrigationMode();
-      if (!next) {
+      if (!next && state.config.features.irrigation) {
         espActivationTimer = window.setTimeout(() => {
           if (espActivationState !== 'pending') return;
           espActivationState = 'timeout';
           renderEspIrrigationMode();
         }, 15000);
       }
-      publishChannel(CHANNELS.mode, next ? '1' : '0');
+      publishChannel('mode', next ? '1' : '0');
     }
 
     if (changed && options.source === 'user') {
@@ -996,6 +1227,7 @@
   function setDevice(device, isOn, options = {}) {
     const meta = DEVICE_META[device];
     if (!meta) return;
+    if (options.publish !== false && !state.config.configured) return;
 
     const next = Boolean(isOn);
     const changed = state.controls[device] !== next;
@@ -1004,7 +1236,13 @@
     renderControls();
 
     if (options.publish !== false) {
-      publishChannel(meta.channel, next ? '1' : '0');
+      if (device === 'pump' && !next && options.source === 'user') {
+        window.clearTimeout(autoPumpTimer);
+        autoPumpTimer = null;
+        autoPumpStarted = false;
+      }
+      if (device === 'pump' && next) webPumpOn = true;
+      publishChannel(device, next ? state.config.bindings[device].on : state.config.bindings[device].off);
     }
 
     if (changed) {
@@ -1025,7 +1263,7 @@
   }
 
   function runFrontendAutomation(source) {
-    if (!state.controls.iotMode) return;
+    if (!state.config.configured || !mqttConnected || !mqttSubscribed || !state.controls.iotMode) return;
 
     const sensors = state.sensors;
     const thresholds = state.thresholds;
@@ -1588,13 +1826,32 @@
   function loadState() {
     let stored = null;
     try {
-      stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || 'null');
+      const current = window.localStorage.getItem(STORAGE_KEY);
+      if (current) {
+        stored = JSON.parse(current);
+      } else {
+        const legacy = JSON.parse(window.localStorage.getItem(LEGACY_STORAGE_KEY) || 'null');
+        if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) {
+          stored = { ...legacy, config: Config.migrate(legacy) };
+          // Keep the legacy entry intact; the first successful save persists v2.
+        }
+      }
     } catch (error) {
       stored = null;
+      storageError = true;
     }
 
-    const next = deepMerge(DEFAULT_STATE, stored || {});
-    next.config.baseTopic = normalizeBaseTopic(next.config.baseTopic);
+    const next = deepMerge(DEFAULT_STATE, stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {});
+    for (const key of ['thresholds', 'controls', 'ui', 'irrigation']) {
+      if (!next[key] || typeof next[key] !== 'object' || Array.isArray(next[key])) next[key] = Config.clone(DEFAULT_STATE[key]);
+    }
+    if (!['moisture', 'schedule'].includes(next.irrigation.mode)
+      || !Array.isArray(next.irrigation.days) || !Array.isArray(next.irrigation.slots)
+      || next.irrigation.slots.some((slot) => !slot || typeof slot.time !== 'string' || !Number.isInteger(slot.seconds))) {
+      next.irrigation = Config.clone(DEFAULT_STATE.irrigation);
+    }
+    next.config = Config.normalize(next.config);
+    if (Object.keys(Config.validate(next.config)).length) next.config.configured = false;
     next.history = Array.isArray(next.history)
       ? next.history.filter((item) => item && Number.isFinite(item.t)).slice(-HISTORY_LIMIT)
       : [];
@@ -1611,25 +1868,32 @@
     });
     syncThresholdBounds(next.thresholds);
 
-    Object.keys(next.sensors).forEach((key) => {
-      if (key === 'updatedAt') return;
-      next.sensors[key] = normalizeNullableNumber(next.sensors[key]);
-    });
+    // Persisted readings and switch positions are not live board state.
+    next.sensors = Config.clone(DEFAULT_STATE.sensors);
+    next.controls.light = next.controls.pump = next.controls.fan = false;
+    next.controls.iotMode = false;
+    if (typeof next.cameraUrl !== 'string') next.cameraUrl = '';
 
     return next;
   }
 
   function saveState() {
+    return persistState(state);
+  }
+
+  function persistState(candidate) {
     try {
       const compactState = {
-        ...state,
-        history: state.history.slice(-HISTORY_LIMIT),
-        alerts: state.alerts.slice(0, ALERT_LIMIT),
-        alertsByDate: compactAlertsByDate(state.alertsByDate),
+        ...candidate,
+        history: candidate.history.slice(-HISTORY_LIMIT),
+        alerts: candidate.alerts.slice(0, ALERT_LIMIT),
+        alertsByDate: compactAlertsByDate(candidate.alertsByDate),
       };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(compactState));
+      return true;
     } catch (error) {
-      // Local storage can be unavailable in restricted browser contexts.
+      notifySettings('Không lưu được trên trình duyệt. Kiểm tra quyền lưu trữ hoặc dung lượng bộ nhớ.', true);
+      return false;
     }
   }
 
@@ -1715,10 +1979,11 @@
   }
 
   function deepMerge(base, patch) {
-    const output = Array.isArray(base) ? base.slice() : { ...base };
+    const output = Config.clone(base);
     if (!patch || typeof patch !== 'object') return output;
 
     Object.entries(patch).forEach(([key, value]) => {
+      if (['__proto__', 'constructor', 'prototype'].includes(key)) return;
       if (Array.isArray(value)) {
         output[key] = value.slice();
       } else if (value && typeof value === 'object' && base[key] && typeof base[key] === 'object' && !Array.isArray(base[key])) {
@@ -1731,28 +1996,8 @@
     return output;
   }
 
-  function mqttTopic(channel) {
-    const base = normalizeBaseTopic(state.config.baseTopic);
-    return base ? `${base}/${channel}` : channel;
-  }
-
-  function topicCandidates(channel) {
-    const primary = mqttTopic(channel);
-    return primary === channel ? [channel] : [primary, channel];
-  }
-
-  function extractChannel(topic) {
-    return String(topic || '').split('/').pop().toUpperCase();
-  }
-
-  function normalizeBaseTopic(topic) {
-    return String(topic || '').trim().replace(/^\/+|\/+$/g, '');
-  }
-
   function parseNumericValue(value) {
-    const normalized = String(value ?? '').replace(',', '.').replace(/[^\d.-]/g, '');
-    const parsed = Number.parseFloat(normalized);
-    return Number.isFinite(parsed) ? parsed : NaN;
+    return Config.parseNumber(value);
   }
 
   function parseBinary(value) {
